@@ -1,0 +1,31 @@
+{% extends 'admin_dashboard/dashboard_base.html' %}
+
+{% block title %}{% if is_edit %}Edit Tag{% else %}Add Tag{% endif %}{% endblock %}
+
+{% block content %}
+<div class="top-row">
+  <h1 class="page-title">{% if is_edit %}Edit Tag{% else %}Add Tag{% endif %}</h1>
+  <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_tags' %}">Back</a>
+</div>
+
+<div class="panel" style="padding:16px;">
+  <form method="post">
+    {% csrf_token %}
+    <div class="field">
+      <label>Tag Name</label>
+      <input type="text" name="name" required maxlength="100" value="{% if tag %}{{ tag.name }}{% endif %}" />
+    </div>
+    <div class="field">
+      <label>Slug</label>
+      <input type="text" name="slug" maxlength="150" value="{% if tag and tag.slug %}{{ tag.slug }}{% endif %}" />
+      <div class="muted">Leave blank to auto-generate from tag name</div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" name="is_active" {% if tag %}{% if tag.is_active %}checked{% endif %}{% else %}checked{% endif %} /> Active</label>
+    </div>
+    <div class="actions">
+      <button class="btn" type="submit">{% if is_edit %}Update Tag{% else %}Create Tag{% endif %}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

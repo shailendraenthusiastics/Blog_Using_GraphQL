@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ blog.title }}</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+    .top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .page-title {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.25;
+    }
+    .back-btn {
+      text-decoration: none;
+      border: 1px solid #2563eb;
+      color: #2563eb;
+      background: #fff;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 700;
+    }
+    .panel {
+      border: 1px solid #dbe2ea;
+      border-radius: 12px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .featured-image {
+      width: 100%;
+      max-height: 430px;
+      object-fit: cover;
+      display: block;
+      background: #e2e8f0;
+    }
+    .content {
+      padding: 16px;
+    }
+    .meta {
+      margin: 8px 0;
+      line-height: 1.5;
+      font-size: 16px;
+    }
+    .meta-label {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .description {
+      margin-top: 14px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 14px;
+      line-height: 1.7;
+      color: #1e293b;
+    }
+    .gallery-title {
+      margin: 20px 0 10px;
+      font-size: 20px;
+    }
+    .gallery-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    }
+    .gallery-image {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid #dbe2ea;
+      background: #e2e8f0;
+    }
+    .muted {
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-row">
+      <h1 class="page-title">{{ blog.title }}</h1>
+      <a class="back-btn" href="{% url 'blog_list' %}">Back to Blogs</a>
+    </div>
+
+    <div class="panel">
+      {% if blog.featured_image %}
+        <img class="featured-image" src="{{ blog.featured_image.url }}" alt="{{ blog.title }}" />
+      {% endif %}
+
+      <div class="content">
+        <p class="meta"><span class="meta-label">Short Description:</span> {{ blog.short_description|default:"-" }}</p>
+        <p class="meta"><span class="meta-label">Slug:</span> {{ blog.slug }}</p>
+        <p class="meta"><span class="meta-label">Author:</span> {{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</p>
+        <p class="meta">
+          <span class="meta-label">Categories:</span>
+          {% for category in blog.categories.all %}
+            {{ category.name }}{% if not forloop.last %}, {% endif %}
+          {% empty %}
+            -
+          {% endfor %}
+        </p>
+        <p class="meta">
+          <span class="meta-label">Tags:</span>
+          {% for tag in blog.tags.all %}
+            {{ tag.name }}{% if not forloop.last %}, {% endif %}
+          {% empty %}
+            -
+          {% endfor %}
+        </p>
+        <p class="meta"><span class="meta-label">Views:</span> <span id="detail-view-count">{{ blog.view_count }}</span></p>
+
+        <div class="description">
+          <p class="meta"><span class="meta-label">Description:</span></p>
+          <div>{{ blog.description|safe }}</div>
+        </div>
+
+        <h2 class="gallery-title">Gallery Images</h2>
+        {% if blog.gallery.all %}
+          <div class="gallery-grid">
+            {% for image in blog.gallery.all %}
+              <img class="gallery-image" src="{{ image.image.url }}" alt="{{ blog.title }} gallery" />
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted">No gallery images available.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const storageKey = 'frontend_blog_view_counts';
+      const endpoint = "{% url 'increment_blog_view' blog.slug %}";
+      const detailViewCountElement = document.getElementById('detail-view-count');
+
+      function readStoredCounts() {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) {
+          return {};
+        }
+        try {
+          return JSON.parse(raw);
+        } catch (error) {
+          return {};
+        }
+      }
+
+      function saveCount(blogId, countValue) {
+        const counts = readStoredCounts();
+        counts[String(blogId)] = countValue;
+        localStorage.setItem(storageKey, JSON.stringify(counts));
+      }
+
+      function incrementViewCount() {
+        fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+          .then(function (response) {
+            return response.json();
+          })
+          .then(function (data) {
+            if (!data || typeof data.view_count === 'undefined') {
+              return;
+            }
+            if (detailViewCountElement) {
+              detailViewCountElement.textContent = data.view_count;
+            }
+            if (typeof data.blog_id !== 'undefined') {
+              saveCount(data.blog_id, data.view_count);
+            }
+          })
+          .catch(function () {});
+      }
+
+      incrementViewCount();
+    })();
+  </script>
+</body>
+</html>

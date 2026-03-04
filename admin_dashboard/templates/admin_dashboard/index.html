@@ -1,0 +1,73 @@
+{% extends 'admin_dashboard/dashboard_base.html' %}
+
+{% block title %}Blog List{% endblock %}
+
+{% block content %}
+<div class="top-row">
+  <h1 class="page-title">Blog List</h1>
+  <a class="btn" href="{% url 'admin_dashboard:dashboard_blog_add' %}">Add Blog</a>
+</div>
+
+<form method="get" class="filter-row">
+  <label for="status" style="font-size:22px;">Status</label>
+  <select id="status" name="status" onchange="this.form.submit()">
+    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
+    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+  </select>
+</form>
+
+<div class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>S.No</th>
+        <th>Title</th>
+        <th>Image</th>
+        <th>Slug</th>
+        <th>Author</th>
+        <th>Created</th>
+        <th>Updated</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for blog in blogs %}
+      <tr>
+        <td>{{ forloop.counter }}</td>
+        <td>{{ blog.title }}</td>
+        <td>
+          {% if blog.featured_image %}
+            <img class="thumb" src="{{ blog.featured_image.url }}" alt="{{ blog.title }}" />
+          {% else %}
+            <span class="muted">-</span>
+          {% endif %}
+        </td>
+        <td>{{ blog.slug }}</td>
+        <td>{{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</td>
+        <td>{{ blog.created_at|date:'d M Y, h:i A' }}</td>
+        <td>{{ blog.updated_at|date:'d M Y, h:i A' }}</td>
+        <td>
+          <span class="tag {% if blog.is_active %}active{% else %}inactive{% endif %}">
+            {% if blog.is_active %}Active{% else %}Inactive{% endif %}
+          </span>
+        </td>
+        <td>
+          <div class="action-row">
+            <a href="{% url 'admin_dashboard:blog_edit' blog.id %}" class="btn btn-sm btn-primary">Edit</a>
+            <form method="post" action="{% url 'admin_dashboard:blog_delete' blog.id %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this blog?')">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" class="muted">No blogs found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

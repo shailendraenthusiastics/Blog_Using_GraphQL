@@ -1,0 +1,35 @@
+{% extends 'admin_dashboard/dashboard_base.html' %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="top-row">
+  <h1 class="page-title">Home</h1>
+  <a class="btn secondary" href="{% url 'admin_dashboard:logout' %}">Logout</a>
+</div>
+
+<div class="panel" style="padding: 20px;">
+  <div class="home-stats">
+    <div class="home-card blog">
+      <div class="label">Blog</div>
+      <div class="value">{{ total_blogs }}</div>
+    </div>
+    <div class="home-card tag">
+      <div class="label">Tag</div>
+      <div class="value">{{ total_tags }}</div>
+    </div>
+    <div class="home-card category">
+      <div class="label">Category</div>
+      <div class="value">{{ total_categories }}</div>
+    </div>
+  </div>
+  <div class="filter-links">
+    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_blogs' %}?status=active">Blogs Active: {{ active_blogs }}</a>
+    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_blogs' %}?status=inactive">Blogs Inactive: {{ inactive_blogs }}</a>
+    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_categories' %}?status=active">Categories Active: {{ active_categories }}</a>
+    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_categories' %}?status=inactive">Categories Inactive: {{ inactive_categories }}</a>
+    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_tags' %}?status=active">Tags Active: {{ active_tags }}</a>
+    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_tags' %}?status=inactive">Tags Inactive: {{ inactive_tags }}</a>
+  </div>
+</div>
+{% endblock %}

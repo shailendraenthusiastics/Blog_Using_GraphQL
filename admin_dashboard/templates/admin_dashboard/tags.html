@@ -1,0 +1,83 @@
+{% extends 'admin_dashboard/dashboard_base.html' %}
+
+{% block title %}Tags{% endblock %}
+
+{% block content %}
+<div class="top-row">
+  <h1 class="page-title">Tag List</h1>
+  <a class="btn" href="{% url 'admin_dashboard:dashboard_tag_add' %}">Add Tag</a>
+</div>
+
+<form method="get" class="filter-row">
+  <label for="status" style="font-size:22px;">Status</label>
+  <select id="status" name="status" onchange="this.form.submit()">
+    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
+    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+  </select>
+</form>
+
+<div class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>S.No</th>
+        <th>Name</th>
+        <th>Slug</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Updated</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tag in tags %}
+      <tr>
+        <td>{{ serial_start|add:forloop.counter }}</td>
+        <td>{{ tag.name }}</td>
+        <td>{{ tag.slug|default:'-' }}</td>
+        <td>
+          <span class="tag {% if tag.is_active %}active{% else %}inactive{% endif %}">
+            {% if tag.is_active %}Active{% else %}Inactive{% endif %}
+          </span>
+        </td>
+        <td>{{ tag.created_at|date:'d M Y, h:i A' }}</td>
+        <td>{{ tag.updated_at|date:'d M Y, h:i A' }}</td>
+        <td>
+          <div class="action-row">
+            <a class="link-btn" href="{% url 'admin_dashboard:dashboard_tag_edit' tag.id %}">Edit</a>
+            <form method="post" action="{% url 'admin_dashboard:dashboard_tag_delete' tag.id %}">
+            {% csrf_token %}
+              <button type="submit" class="action-btn" onclick="return confirm('Delete this tag?')">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" class="muted">No tags found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if tags.paginator.num_pages > 1 %}
+<div class="filter-links">
+  {% if tags.has_previous %}
+    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ tags.previous_page_number }}">Previous</a>
+  {% endif %}
+
+  {% for page_num in tags.paginator.page_range %}
+    <a
+      class="chip-link {% if page_num == tags.number %}active{% endif %}"
+      href="?status={{ status_filter }}&page={{ page_num }}"
+    >
+      {{ page_num }}
+    </a>
+  {% endfor %}
+
+  {% if tags.has_next %}
+    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ tags.next_page_number }}">Next</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

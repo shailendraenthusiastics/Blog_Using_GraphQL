@@ -1,0 +1,480 @@
+{% extends 'admin_dashboard/dashboard_base.html' %}
+
+{% block title %}{% if is_edit %}Edit Blog{% else %}Add Blog{% endif %}{% endblock %}
+
+{% block content %}
+<div class="top-row">
+  <h1 class="page-title">{% if is_edit %}Edit Blog{% else %}Add Blog{% endif %}</h1>
+  <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_blogs' %}">Back</a>
+</div>
+
+<div class="panel" style="padding:16px;">
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    {% if non_field_errors %}
+      <div class="field" style="margin-bottom:10px;">
+        {% for error in non_field_errors %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <div class="field">
+      <label>Title</label>
+      <input type="text" name="title" required maxlength="150" value="{% if is_edit %}{{ form_values.title|default:blog.title|default:'' }}{% else %}{{ form_values.title|default:'' }}{% endif %}" />
+      {% if field_errors.title %}
+        {% for error in field_errors.title %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    <div class="field">
+      <label>Short Description</label>
+      <input type="text" name="short_description" required maxlength="255" value="{% if is_edit %}{{ form_values.short_description|default:blog.short_description|default:'' }}{% else %}{{ form_values.short_description|default:'' }}{% endif %}" />
+      {% if field_errors.short_description %}
+        {% for error in field_errors.short_description %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    <div class="field">
+      <label>Description</label>
+      <textarea id="description_editor" name="description" required>{% if is_edit %}{{ form_values.description|default:blog.description|default:'' }}{% else %}{{ form_values.description|default:'' }}{% endif %}</textarea>
+      {% if field_errors.description %}
+        {% for error in field_errors.description %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    {% if not is_edit %}
+    <div class="field">
+      <label>Author Name</label>
+      <input type="text" name="author_name" required maxlength="150" value="{{ form_values.author_name|default:'' }}" placeholder="Enter author name" />
+      {% if field_errors.author_name %}
+        {% for error in field_errors.author_name %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="field">
+      <label>Author Name</label>
+      <input type="text" name="author_name" required maxlength="150" value="{{ form_values.author_name|default:blog.author.get_full_name|default:blog.author.username }}" />
+      {% if field_errors.author_name %}
+        {% for error in field_errors.author_name %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="field">
+      <label>Featured Image</label>
+      <input id="featured_image" type="file" name="featured_image" accept=".jpg,.jpeg,.png" {% if not is_edit or not blog or not blog.featured_image or pending_delete_featured_image %}required{% endif %} />
+      <input type="hidden" id="delete_featured_image" name="delete_featured_image" value="{% if pending_delete_featured_image %}1{% else %}0{% endif %}" />
+      <div id="featured_preview" style="margin-top:10px; {% if blog and blog.featured_image and not pending_delete_featured_image %}display:block;{% else %}display:none;{% endif %}; position:relative; width:260px;">
+        <img id="featured_preview_img" src="{% if blog and blog.featured_image %}{{ blog.featured_image.url }}{% endif %}" alt="Featured preview" style="width:260px; max-height:180px; border:1px solid #d1d5db; border-radius:6px; object-fit:cover;" />
+        <button type="button" id="remove_featured_image" style="position:absolute; top:6px; right:6px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:24px; height:24px; line-height:24px; font-size:14px; cursor:pointer;">×</button>
+      </div>
+      <div class="muted">Click × to remove featured image</div>
+      {% if field_errors.featured_image %}
+        {% for error in field_errors.featured_image %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    {% if is_edit and blog.gallery.all %}
+    <div class="field">
+      <label>Existing Gallery Images</label>
+      <div id="existing_gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+        {% for image in blog.gallery.all %}
+          <div class="existing-gallery-item" data-image-id="{{ image.id }}" style="position:relative; width:120px; height:80px; {% if image.id|stringformat:"s" in pending_remove_gallery_ids %}display:none;{% endif %}">
+            <img class="thumb" src="{{ image.image.url }}" alt="Existing gallery image" style="width:100%; height:100%;" />
+            <button type="button" class="remove-existing-gallery" data-image-id="{{ image.id }}" style="position:absolute; top:4px; right:4px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:22px; height:22px; line-height:22px; font-size:14px; cursor:pointer;">×</button>
+          </div>
+        {% endfor %}
+      </div>
+      <div id="removed_gallery_inputs">
+        {% for removed_id in pending_remove_gallery_ids %}
+          <input type="hidden" name="remove_gallery_image_ids" value="{{ removed_id }}" />
+        {% endfor %}
+      </div>
+      <div class="muted">Click × on image to remove it on update</div>
+    </div>
+    {% endif %}
+    <div class="field">
+      <label>{% if is_edit %}Add More Gallery Images{% else %}Gallery Images{% endif %}</label>
+      <input id="gallery_images" type="file" name="gallery_images[]" accept=".jpg,.jpeg,.png" multiple />
+      <div class="muted">You can select multiple images</div>
+      <div id="gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+    </div>
+    <div class="field">
+      <label>Categories</label>
+      <select id="category_ids" name="category_ids" multiple required size="6">
+        {% for category in categories %}
+          <option value="{{ category.id }}" {% if category.id|stringformat:"s" in selected_category_ids %}selected{% endif %}>{{ category.name }}</option>
+        {% endfor %}
+      </select>
+      <div class="muted">Click one option, then click another to keep both selected</div>
+      {% if field_errors.category_ids %}
+        {% for error in field_errors.category_ids %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    <div class="field">
+      <label>Tags</label>
+      <select id="tag_ids" name="tag_ids" multiple required size="6">
+        {% for tag in tags %}
+          <option value="{{ tag.id }}" {% if tag.id|stringformat:"s" in selected_tag_ids %}selected{% endif %}>{{ tag.name }}</option>
+        {% endfor %}
+      </select>
+      <div class="muted">Click one option, then click another to keep both selected</div>
+      {% if field_errors.tag_ids %}
+        {% for error in field_errors.tag_ids %}
+          <div class="message error">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    <div class="field">
+      <label><input type="checkbox" name="is_active" {% if form_values.is_active %}checked{% endif %} /> Active</label>
+    </div>
+    <div class="actions">
+      <button class="btn" type="submit">{% if is_edit %}Update Blog{% else %}Create Blog{% endif %}</button>
+    </div>
+  </form>
+</div>
+<script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
+<script>
+  (function () {
+    const blogForm = document.querySelector('form[method="post"]');
+    const descriptionEditorElement = document.getElementById('description_editor');
+    let descriptionEditorInstance = null;
+    const featuredStorageKey = 'admin_dashboard_blog_featured_file';
+    const galleryStorageKey = 'admin_dashboard_blog_gallery_files';
+
+    if (typeof ClassicEditor !== 'undefined' && descriptionEditorElement) {
+      ClassicEditor
+        .create(descriptionEditorElement, {
+          ckfinder: {
+            uploadUrl: "{% url 'admin_dashboard:ckeditor_upload' %}",
+          },
+          toolbar: [
+            'undo', 'redo', '|',
+            'heading', '|',
+            'bold', 'italic', 'link', '|',
+            'bulletedList', 'numberedList', '|',
+            'insertTable', 'uploadImage', 'blockQuote'
+          ],
+          image: {
+            toolbar: ['imageTextAlternative', 'imageStyle:inline', 'imageStyle:block', 'imageStyle:side']
+          }
+        })
+        .then(function (editor) {
+          descriptionEditorInstance = editor;
+        })
+        .catch(function () {});
+    }
+
+    const featuredInput = document.getElementById('featured_image');
+    const featuredPreview = document.getElementById('featured_preview');
+    const featuredPreviewImg = document.getElementById('featured_preview_img');
+    const removeFeaturedButton = document.getElementById('remove_featured_image');
+    const deleteFeaturedInput = document.getElementById('delete_featured_image');
+    const galleryInput = document.getElementById('gallery_images');
+    const galleryPreview = document.getElementById('gallery_preview');
+    let gallerySelectedFiles = [];
+
+    function hasErrorMessages() {
+      return Boolean(document.querySelector('.message.error'));
+    }
+
+    function fileToDataUrl(file) {
+      return new Promise(function (resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          resolve(event.target.result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function dataUrlToFile(dataUrl, fileName, mimeType, lastModified) {
+      const parts = String(dataUrl || '').split(',');
+      if (parts.length !== 2) {
+        return null;
+      }
+      const binary = atob(parts[1]);
+      const length = binary.length;
+      const bytes = new Uint8Array(length);
+      for (let index = 0; index < length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return new File([bytes], fileName || 'upload', {
+        type: mimeType || 'application/octet-stream',
+        lastModified: lastModified || Date.now()
+      });
+    }
+
+    function saveFeaturedSelection(file) {
+      if (!file) {
+        sessionStorage.removeItem(featuredStorageKey);
+        return;
+      }
+      fileToDataUrl(file).then(function (dataUrl) {
+        sessionStorage.setItem(featuredStorageKey, JSON.stringify({
+          name: file.name,
+          type: file.type,
+          lastModified: file.lastModified,
+          dataUrl: dataUrl
+        }));
+      }).catch(function () {});
+    }
+
+    function saveGallerySelection(files) {
+      if (!files || !files.length) {
+        sessionStorage.removeItem(galleryStorageKey);
+        return;
+      }
+      Promise.all(files.map(function (file) {
+        return fileToDataUrl(file).then(function (dataUrl) {
+          return {
+            name: file.name,
+            type: file.type,
+            lastModified: file.lastModified,
+            dataUrl: dataUrl
+          };
+        });
+      })).then(function (serializedFiles) {
+        sessionStorage.setItem(galleryStorageKey, JSON.stringify(serializedFiles));
+      }).catch(function () {});
+    }
+
+    function buildFileKey(file) {
+      return [file.name, file.size, file.lastModified].join('::');
+    }
+
+    function syncGalleryInputFiles() {
+      const dataTransfer = new DataTransfer();
+      for (let i = 0; i < gallerySelectedFiles.length; i += 1) {
+        dataTransfer.items.add(gallerySelectedFiles[i]);
+      }
+      galleryInput.files = dataTransfer.files;
+    }
+
+    function renderGalleryPreview() {
+      galleryPreview.innerHTML = '';
+      for (let i = 0; i < gallerySelectedFiles.length; i += 1) {
+        const file = gallerySelectedFiles[i];
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          const wrapper = document.createElement('div');
+          wrapper.style.position = 'relative';
+          wrapper.style.width = '130px';
+          wrapper.style.height = '90px';
+
+          const img = document.createElement('img');
+          img.src = event.target.result;
+          img.alt = 'Gallery preview';
+          img.style.width = '130px';
+          img.style.height = '90px';
+          img.style.objectFit = 'cover';
+          img.style.border = '1px solid #d1d5db';
+          img.style.borderRadius = '6px';
+
+          const removeButton = document.createElement('button');
+          removeButton.type = 'button';
+          removeButton.textContent = '×';
+          removeButton.style.position = 'absolute';
+          removeButton.style.top = '4px';
+          removeButton.style.right = '4px';
+          removeButton.style.background = '#dc2626';
+          removeButton.style.color = '#fff';
+          removeButton.style.border = 'none';
+          removeButton.style.borderRadius = '999px';
+          removeButton.style.width = '22px';
+          removeButton.style.height = '22px';
+          removeButton.style.lineHeight = '22px';
+          removeButton.style.fontSize = '14px';
+          removeButton.style.cursor = 'pointer';
+          removeButton.addEventListener('click', function () {
+            gallerySelectedFiles.splice(i, 1);
+            syncGalleryInputFiles();
+            renderGalleryPreview();
+            saveGallerySelection(gallerySelectedFiles);
+          });
+
+          wrapper.appendChild(img);
+          wrapper.appendChild(removeButton);
+          galleryPreview.appendChild(wrapper);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function restoreFeaturedSelection() {
+      const raw = sessionStorage.getItem(featuredStorageKey);
+      if (!raw || !featuredInput) {
+        return;
+      }
+      try {
+        const payload = JSON.parse(raw);
+        const restoredFile = dataUrlToFile(payload.dataUrl, payload.name, payload.type, payload.lastModified);
+        if (!restoredFile) {
+          return;
+        }
+        const transfer = new DataTransfer();
+        transfer.items.add(restoredFile);
+        featuredInput.files = transfer.files;
+        featuredPreviewImg.src = payload.dataUrl;
+        featuredPreview.style.display = 'block';
+        if (deleteFeaturedInput) {
+          deleteFeaturedInput.value = '0';
+        }
+      } catch (error) {
+        sessionStorage.removeItem(featuredStorageKey);
+      }
+    }
+
+    function restoreGallerySelection() {
+      const raw = sessionStorage.getItem(galleryStorageKey);
+      if (!raw || !galleryInput) {
+        return;
+      }
+      try {
+        const payload = JSON.parse(raw);
+        if (!Array.isArray(payload)) {
+          return;
+        }
+        gallerySelectedFiles = payload
+          .map(function (fileMeta) {
+            return dataUrlToFile(fileMeta.dataUrl, fileMeta.name, fileMeta.type, fileMeta.lastModified);
+          })
+          .filter(function (file) {
+            return Boolean(file);
+          });
+        syncGalleryInputFiles();
+        renderGalleryPreview();
+      } catch (error) {
+        sessionStorage.removeItem(galleryStorageKey);
+      }
+    }
+
+    if (!hasErrorMessages()) {
+      sessionStorage.removeItem(featuredStorageKey);
+      sessionStorage.removeItem(galleryStorageKey);
+    }
+
+    if (blogForm) {
+      blogForm.addEventListener('submit', function () {
+        if (descriptionEditorInstance && descriptionEditorElement) {
+          descriptionEditorElement.value = descriptionEditorInstance.getData();
+        }
+        saveGallerySelection(gallerySelectedFiles);
+        if (featuredInput && featuredInput.files && featuredInput.files[0]) {
+          saveFeaturedSelection(featuredInput.files[0]);
+        }
+      });
+    }
+
+    if (featuredInput) {
+      featuredInput.addEventListener('change', function () {
+        const file = featuredInput.files && featuredInput.files[0];
+        if (!file) {
+          featuredPreview.style.display = 'none';
+          featuredPreviewImg.src = '';
+          if (deleteFeaturedInput && deleteFeaturedInput.value === '1') {
+            featuredInput.required = true;
+          }
+          saveFeaturedSelection(null);
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          featuredPreviewImg.src = event.target.result;
+          featuredPreview.style.display = 'block';
+          if (deleteFeaturedInput) {
+            deleteFeaturedInput.value = '0';
+          }
+          featuredInput.required = false;
+        };
+        reader.readAsDataURL(file);
+        saveFeaturedSelection(file);
+      });
+    }
+
+    if (removeFeaturedButton && featuredInput && featuredPreview && featuredPreviewImg) {
+      removeFeaturedButton.addEventListener('click', function () {
+        featuredInput.value = '';
+        featuredPreviewImg.src = '';
+        featuredPreview.style.display = 'none';
+        if (deleteFeaturedInput) {
+          deleteFeaturedInput.value = '1';
+        }
+        featuredInput.required = true;
+        saveFeaturedSelection(null);
+      });
+    }
+
+    if (galleryInput) {
+      galleryInput.addEventListener('change', function () {
+        const files = galleryInput.files || [];
+        const existingKeys = new Set(gallerySelectedFiles.map(buildFileKey));
+        for (let i = 0; i < files.length; i += 1) {
+          const file = files[i];
+          const key = buildFileKey(file);
+          if (!existingKeys.has(key)) {
+            gallerySelectedFiles.push(file);
+            existingKeys.add(key);
+          }
+        }
+
+        syncGalleryInputFiles();
+        renderGalleryPreview();
+        saveGallerySelection(gallerySelectedFiles);
+      });
+    }
+
+    const removeExistingButtons = document.querySelectorAll('.remove-existing-gallery');
+    const removedInputsContainer = document.getElementById('removed_gallery_inputs');
+    if (removeExistingButtons.length && removedInputsContainer) {
+      removeExistingButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+          const imageId = button.getAttribute('data-image-id');
+          const existingItem = document.querySelector('.existing-gallery-item[data-image-id="' + imageId + '"]');
+          if (existingItem) {
+            existingItem.style.display = 'none';
+          }
+          const existingInput = removedInputsContainer.querySelector('input[value="' + imageId + '"]');
+          if (!existingInput) {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'remove_gallery_image_ids';
+            hiddenInput.value = imageId;
+            removedInputsContainer.appendChild(hiddenInput);
+          }
+        });
+      });
+    }
+
+    function enableClickMultiSelect(selectElementId) {
+      const selectElement = document.getElementById(selectElementId);
+      if (!selectElement) {
+        return;
+      }
+      selectElement.addEventListener('mousedown', function (event) {
+        const option = event.target;
+        if (option.tagName !== 'OPTION') {
+          return;
+        }
+        event.preventDefault();
+        option.selected = !option.selected;
+      });
+    }
+
+    enableClickMultiSelect('category_ids');
+    enableClickMultiSelect('tag_ids');
+    restoreFeaturedSelection();
+    restoreGallerySelection();
+  })();
+</script>
+{% endblock %}

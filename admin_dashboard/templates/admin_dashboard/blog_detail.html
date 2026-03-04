@@ -1,0 +1,49 @@
+{% extends 'admin_dashboard/dashboard_base.html' %}
+
+{% block title %}Blog Detail{% endblock %}
+
+{% block content %}
+<div class="top-row">
+  <h1 class="page-title">Blog Detail</h1>
+  <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_blogs' %}">Back to Blogs</a>
+</div>
+
+<div class="panel" style="padding:16px;">
+  {% if blog.featured_image %}
+    <img class="thumb" style="width:220px;height:140px;" src="{{ blog.featured_image.url }}" alt="{{ blog.title }}" />
+  {% else %}
+    <p><strong>Featured Image:</strong> -</p>
+  {% endif %}
+  <p><strong>Title:</strong> {{ blog.title|default:"-" }}</p>
+  <p><strong>Slug:</strong> {{ blog.slug|default:"-" }}</p>
+  <p><strong>Short Description:</strong> {{ blog.short_description|default:"-" }}</p>
+  <p><strong>Description:</strong> {{ blog.description|striptags|default:"-" }}</p>
+  <p><strong>Author:</strong> {{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</p>
+  <p><strong>View Count:</strong> {{ blog.view_count|default:0 }}</p>
+  <p><strong>Status:</strong> {% if blog.is_active %}Active{% else %}Inactive{% endif %}</p>
+  <p><strong>Gallery Images:</strong></p>
+  {% if blog.gallery.all %}
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+      {% for image in blog.gallery.all %}
+        <img class="thumb" src="{{ image.image.url }}" alt="{{ blog.title }} gallery" />
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>-</p>
+  {% endif %}
+  <p><strong>Categories:</strong>
+    {% for category in blog.categories.all %}
+      {{ category.name }}{% if not forloop.last %}, {% endif %}
+    {% empty %}
+      -
+    {% endfor %}
+  </p>
+  <p><strong>Tags:</strong>
+    {% for tag in blog.tags.all %}
+      {{ tag.name }}{% if not forloop.last %}, {% endif %}
+    {% empty %}
+      -
+    {% endfor %}
+  </p>
+</div>
+{% endblock %}

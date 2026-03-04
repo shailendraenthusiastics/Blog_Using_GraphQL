@@ -1,0 +1,83 @@
+{% extends 'admin_dashboard/dashboard_base.html' %}
+
+{% block title %}Categories{% endblock %}
+
+{% block content %}
+<div class="top-row">
+  <h1 class="page-title">Category List</h1>
+  <a class="btn" href="{% url 'admin_dashboard:dashboard_category_add' %}">Add Category</a>
+</div>
+
+<form method="get" class="filter-row">
+  <label for="status" style="font-size:22px;">Status</label>
+  <select id="status" name="status" onchange="this.form.submit()">
+    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
+    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+  </select>
+</form>
+
+<div class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>S.No</th>
+        <th>Name</th>
+        <th>Slug</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Updated</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for category in categories %}
+      <tr>
+        <td>{{ serial_start|add:forloop.counter }}</td>
+        <td>{{ category.name }}</td>
+        <td>{{ category.slug|default:'-' }}</td>
+        <td>
+          <span class="tag {% if category.is_active %}active{% else %}inactive{% endif %}">
+            {% if category.is_active %}Active{% else %}Inactive{% endif %}
+          </span>
+        </td>
+        <td>{{ category.created_at|date:'d M Y, h:i A' }}</td>
+        <td>{{ category.updated_at|date:'d M Y, h:i A' }}</td>
+        <td>
+          <div class="action-row">
+            <a class="link-btn" href="{% url 'admin_dashboard:dashboard_category_edit' category.id %}">Edit</a>
+            <form method="post" action="{% url 'admin_dashboard:dashboard_category_delete' category.id %}">
+            {% csrf_token %}
+              <button type="submit" class="action-btn" onclick="return confirm('Delete this category?')">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" class="muted">No categories found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if categories.paginator.num_pages > 1 %}
+<div class="filter-links">
+  {% if categories.has_previous %}
+    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ categories.previous_page_number }}">Previous</a>
+  {% endif %}
+
+  {% for page_num in categories.paginator.page_range %}
+    <a
+      class="chip-link {% if page_num == categories.number %}active{% endif %}"
+      href="?status={{ status_filter }}&page={{ page_num }}"
+    >
+      {{ page_num }}
+    </a>
+  {% endfor %}
+
+  {% if categories.has_next %}
+    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ categories.next_page_number }}">Next</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
