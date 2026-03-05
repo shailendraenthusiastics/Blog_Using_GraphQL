@@ -1,5 +1,4 @@
 import json
-
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
 from django.db.models import F
@@ -11,13 +10,10 @@ from graphene_file_upload.django import FileUploadGraphQLView
 from graphql_jwt.exceptions import JSONWebTokenError, JSONWebTokenExpired
 from graphql_jwt.settings import jwt_settings
 from graphql_jwt.utils import jwt_decode
-
 from .models import Blog, BlogImage
-
 
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
-
 
 def blog_list(request):
     blogs = (
@@ -28,7 +24,6 @@ def blog_list(request):
     )
     return render(request, "GraphQL/blog_list.html", {"blogs": blogs})
 
-
 def blog_detail(request, slug):
     blog = get_object_or_404(
         Blog.objects.filter(is_active=True, is_deleted=False)
@@ -37,7 +32,6 @@ def blog_detail(request, slug):
         slug=slug,
     )
     return render(request, "GraphQL/blog_detail.html", {"blog": blog})
-
 
 @csrf_exempt
 @require_POST
@@ -53,7 +47,6 @@ def increment_blog_view(request, slug):
             "view_count": blog.view_count,
         }
     )
-
 
 class CustomGraphQLView(FileUploadGraphQLView):
     TOKEN_ERROR_TEXTS = (
@@ -99,8 +92,6 @@ class CustomGraphQLView(FileUploadGraphQLView):
             return result, 404
 
         return result, 400
-
-
 def _get_user_from_jwt_request(request):
     auth_header = request.META.get("HTTP_AUTHORIZATION", "").strip()
     if not auth_header:
@@ -126,12 +117,9 @@ def _get_user_from_jwt_request(request):
         return None, JsonResponse({"error": "Invalid JWT token"}, status=401)
     except Exception:
         return None, JsonResponse({"error": "Invalid JWT token"}, status=401)
-
-
 def _validate_image_file(image_file, field_name):
     if not image_file:
         return None
-
     file_name = (image_file.name or "").lower()
     if "." not in file_name:
         return f"{field_name}: Only JPG and PNG files are allowed."
@@ -144,8 +132,6 @@ def _validate_image_file(image_file, field_name):
         return f"{field_name}: File size must be 5 MB or less."
 
     return None
-
-
 @csrf_exempt
 @require_POST
 def upload_blog_images(request):

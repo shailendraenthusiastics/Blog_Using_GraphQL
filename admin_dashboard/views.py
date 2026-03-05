@@ -228,6 +228,7 @@ def dashboard_home(request):
 def dashboard_blogs(request):
     status = (request.GET.get("status") or "all").lower()
     blogs = Blog.objects.select_related("author").prefetch_related("categories", "tags")
+    page_number = request.GET.get("page")
     if status == "active":
         blogs = blogs.filter(is_active=True)
     elif status == "inactive":
@@ -235,11 +236,15 @@ def dashboard_blogs(request):
     else:
         status = "all"
     blogs = blogs.order_by("-created_at")
+    paginator = Paginator(blogs, 10)
+    blogs = paginator.get_page(page_number)
+    serial_start = (blogs.number - 1) * paginator.per_page
     return render(
         request,
         "admin_dashboard/index.html",
         {
             "blogs": blogs,
+            "serial_start": serial_start,
             "active_menu": "blogs",
             "status_filter": status,
         },
@@ -270,6 +275,8 @@ def dashboard_blog_add(request):
     tags = BlogTag.objects.filter(is_active=True).order_by("name")
     selected_category_ids = []
     selected_tag_ids = []
+    pending_featured_image = None
+    pending_gallery_images = []
     form_values = {
         "author_name": "",
         "title": "",
@@ -338,9 +345,75 @@ def dashboard_blog_add(request):
 
         featured_image = request.FILES.get("featured_image")
         delete_featured_image = request.POST.get("delete_featured_image") == "1"
+        pending_featured_image_id = request.POST.get("pending_featured_image_id")
         gallery_images = request.FILES.getlist("gallery_images") or request.FILES.getlist("gallery_images[]")
-        remove_gallery_image_ids = request.POST.getlist("remove_gallery_image_ids")
-        if not featured_image:
+        pending_gallery_image_ids = request.POST.getlist("pending_gallery_image_ids")
+        remove_pending_gallery_image_ids = request.POST.getlist("remove_pending_gallery_image_ids")
+
+        try:
+            parsed_pending_featured_image_id = int(pending_featured_image_id)
+        except (TypeError, ValueError):
+            parsed_pending_featured_image_id = None
+
+        if parsed_pending_featured_image_id:
+            pending_featured_image = BlogImage.objects.filter(
+                id=parsed_pending_featured_image_id,
+                blogs__isnull=True,
+            ).first()
+
+        if delete_featured_image and pending_featured_image:
+            if not pending_featured_image.blogs.exists():
+                pending_featured_image.delete()
+            pending_featured_image = None
+
+        if featured_image:
+            if pending_featured_image and not pending_featured_image.blogs.exists():
+                pending_featured_image.delete()
+            pending_featured_image = BlogImage.objects.create(image=featured_image)
+
+        def parse_unique_image_ids(raw_values):
+            parsed_ids = []
+            seen_ids = set()
+            for raw_value in raw_values:
+                try:
+                    image_id = int(raw_value)
+                except (TypeError, ValueError):
+                    continue
+                if image_id in seen_ids:
+                    continue
+                seen_ids.add(image_id)
+                parsed_ids.append(image_id)
+            return parsed_ids
+
+        pending_gallery_ids = parse_unique_image_ids(pending_gallery_image_ids)
+        remove_pending_gallery_ids = set(parse_unique_image_ids(remove_pending_gallery_image_ids))
+
+        existing_pending_gallery = BlogImage.objects.filter(
+            id__in=pending_gallery_ids,
+            blogs__isnull=True,
+        ).distinct()
+        pending_gallery_by_id = {image.id: image for image in existing_pending_gallery}
+        pending_gallery_images = [
+            pending_gallery_by_id[image_id]
+            for image_id in pending_gallery_ids
+            if image_id in pending_gallery_by_id
+        ]
+
+        if remove_pending_gallery_ids:
+            retained_pending_gallery = []
+            for image in pending_gallery_images:
+                if image.id in remove_pending_gallery_ids:
+                    if not image.blogs.exists():
+                        image.delete()
+                else:
+                    retained_pending_gallery.append(image)
+            pending_gallery_images = retained_pending_gallery
+
+        if gallery_images:
+            created_pending_gallery = [BlogImage.objects.create(image=image_file) for image_file in gallery_images]
+            pending_gallery_images.extend(created_pending_gallery)
+
+        if not pending_featured_image:
             add_field_error("featured_image", "Featured image is required.")
 
         if not selected_category_ids:
@@ -376,15 +449,16 @@ def dashboard_blog_add(request):
                 slug=slug,
                 short_description=short_description,
                 description=description,
-                featured_image=featured_image,
+                featured_image=pending_featured_image.image,
                 author=selected_author,
                 is_active=form_values["is_active"],
             )
             blog.categories.set(selected_categories)
             blog.tags.set(selected_tags)
-            if gallery_images:
-                created_gallery_images = [BlogImage.objects.create(image=image_file) for image_file in gallery_images]
-                blog.gallery.set(created_gallery_images)
+            if pending_gallery_images:
+                blog.gallery.set(pending_gallery_images)
+            if pending_featured_image and not pending_featured_image.blogs.exists():
+                pending_featured_image.delete()
             messages.success(request, "Blog created successfully.")
             return redirect("admin_dashboard:dashboard_blogs")
 
@@ -399,6 +473,8 @@ def dashboard_blog_add(request):
             "non_field_errors": non_field_errors,
             "selected_category_ids": selected_category_ids,
             "selected_tag_ids": selected_tag_ids,
+            "pending_featured_image": pending_featured_image,
+            "pending_gallery_images": pending_gallery_images,
             "active_menu": "blogs",
         },
     )
@@ -451,21 +527,38 @@ def dashboard_category_detail(request, category_id):
 @login_required(login_url=DASHBOARD_LOGIN_URL)
 @user_passes_test(_is_superuser, login_url=DASHBOARD_LOGIN_URL)
 def dashboard_category_add(request):
+    form_values = {
+        "name": "",
+        "slug": "",
+        "is_active": True,
+    }
     if request.method == "POST":
+        form_values = {
+            "name": request.POST.get("name") or "",
+            "slug": request.POST.get("slug") or "",
+            "is_active": request.POST.get("is_active") == "on",
+        }
         try:
-            name = _to_title_case(_clean_text(request.POST.get("name"), "Category name", 100))
-            raw_slug = (request.POST.get("slug") or "").strip()
+            name = _to_title_case(_clean_text(form_values["name"], "Category name", 100))
+            raw_slug = (form_values["slug"] or "").strip()
             if BlogCategory.objects.filter(name__iexact=name).exists():
                 raise ValueError("Category already exists.")
             slug_source = raw_slug or name
             slug = _build_unique_term_slug(BlogCategory, slug_source)
-            BlogCategory.objects.create(name=name, slug=slug, is_active=request.POST.get("is_active") == "on")
+            BlogCategory.objects.create(name=name, slug=slug, is_active=form_values["is_active"])
             messages.success(request, "Category created successfully.")
             return redirect("admin_dashboard:dashboard_categories")  # changed
         except ValueError as exc:
             messages.error(request, str(exc))
 
-    return render(request, "admin_dashboard/category_add.html", {"active_menu": "categories"})
+    return render(
+        request,
+        "admin_dashboard/category_add.html",
+        {
+            "active_menu": "categories",
+            "form_values": form_values,
+        },
+    )
 
 
 @login_required(login_url=DASHBOARD_LOGIN_URL)
@@ -555,21 +648,38 @@ def dashboard_tag_detail(request, tag_id):
 @login_required(login_url=DASHBOARD_LOGIN_URL)
 @user_passes_test(_is_superuser, login_url=DASHBOARD_LOGIN_URL)
 def dashboard_tag_add(request):
+    form_values = {
+        "name": "",
+        "slug": "",
+        "is_active": True,
+    }
     if request.method == "POST":
+        form_values = {
+            "name": request.POST.get("name") or "",
+            "slug": request.POST.get("slug") or "",
+            "is_active": request.POST.get("is_active") == "on",
+        }
         try:
-            name = _to_title_case(_clean_text(request.POST.get("name"), "Tag name", 100))
-            raw_slug = (request.POST.get("slug") or "").strip()
+            name = _to_title_case(_clean_text(form_values["name"], "Tag name", 100))
+            raw_slug = (form_values["slug"] or "").strip()
             if BlogTag.objects.filter(name__iexact=name).exists():
                 raise ValueError("Tag already exists.")
             slug_source = raw_slug or name
             slug = _build_unique_term_slug(BlogTag, slug_source)
-            BlogTag.objects.create(name=name, slug=slug, is_active=request.POST.get("is_active") == "on")
+            BlogTag.objects.create(name=name, slug=slug, is_active=form_values["is_active"])
             messages.success(request, "Tag created successfully.")
             return redirect("admin_dashboard:dashboard_tags")  # changed
         except ValueError as exc:
             messages.error(request, str(exc))
 
-    return render(request, "admin_dashboard/tag_add.html", {"active_menu": "tags"})
+    return render(
+        request,
+        "admin_dashboard/tag_add.html",
+        {
+            "active_menu": "tags",
+            "form_values": form_values,
+        },
+    )
 
 
 @login_required(login_url=DASHBOARD_LOGIN_URL)

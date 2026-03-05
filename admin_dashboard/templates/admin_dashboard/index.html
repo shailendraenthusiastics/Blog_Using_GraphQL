@@ -35,7 +35,7 @@
     <tbody>
       {% for blog in blogs %}
       <tr>
-        <td>{{ forloop.counter }}</td>
+        <td>{{ serial_start|add:forloop.counter }}</td>
         <td>{{ blog.title }}</td>
         <td>
           {% if blog.featured_image %}
@@ -69,5 +69,26 @@
     </tbody>
   </table>
 </div>
+
+{% if blogs.paginator.num_pages > 1 %}
+<div class="filter-links">
+  {% if blogs.has_previous %}
+    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ blogs.previous_page_number }}">Previous</a>
+  {% endif %}
+
+  {% for page_num in blogs.paginator.page_range %}
+    <a
+      class="chip-link {% if page_num == blogs.number %}active{% endif %}"
+      href="?status={{ status_filter }}&page={{ page_num }}"
+    >
+      {{ page_num }}
+    </a>
+  {% endfor %}
+
+  {% if blogs.has_next %}
+    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ blogs.next_page_number }}">Next</a>
+  {% endif %}
+</div>
+{% endif %}
 
 {% endblock %}

@@ -68,10 +68,11 @@
     {% endif %}
     <div class="field">
       <label>Featured Image</label>
-      <input id="featured_image" type="file" name="featured_image" accept=".jpg,.jpeg,.png" {% if not is_edit or not blog or not blog.featured_image or pending_delete_featured_image %}required{% endif %} />
+      <input id="featured_image" type="file" name="featured_image" accept=".jpg,.jpeg,.png" {% if is_edit %}{% if not blog or not blog.featured_image or pending_delete_featured_image %}required{% endif %}{% else %}{% if not pending_featured_image %}required{% endif %}{% endif %} />
       <input type="hidden" id="delete_featured_image" name="delete_featured_image" value="{% if pending_delete_featured_image %}1{% else %}0{% endif %}" />
-      <div id="featured_preview" style="margin-top:10px; {% if blog and blog.featured_image and not pending_delete_featured_image %}display:block;{% else %}display:none;{% endif %}; position:relative; width:260px;">
-        <img id="featured_preview_img" src="{% if blog and blog.featured_image %}{{ blog.featured_image.url }}{% endif %}" alt="Featured preview" style="width:260px; max-height:180px; border:1px solid #d1d5db; border-radius:6px; object-fit:cover;" />
+      <input type="hidden" id="pending_featured_image_id" name="pending_featured_image_id" value="{% if pending_featured_image %}{{ pending_featured_image.id }}{% endif %}" />
+      <div id="featured_preview" style="margin-top:10px; {% if is_edit %}{% if blog and blog.featured_image and not pending_delete_featured_image %}display:block;{% else %}display:none;{% endif %}{% else %}{% if pending_featured_image %}display:block;{% else %}display:none;{% endif %}{% endif %}; position:relative; width:260px;">
+        <img id="featured_preview_img" src="{% if is_edit %}{% if blog and blog.featured_image and not pending_delete_featured_image %}{{ blog.featured_image.url }}{% endif %}{% else %}{% if pending_featured_image %}{{ pending_featured_image.image.url }}{% endif %}{% endif %}" alt="Featured preview" style="width:260px; max-height:180px; border:1px solid #d1d5db; border-radius:6px; object-fit:cover;" />
         <button type="button" id="remove_featured_image" style="position:absolute; top:6px; right:6px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:24px; height:24px; line-height:24px; font-size:14px; cursor:pointer;">×</button>
       </div>
       <div class="muted">Click × to remove featured image</div>
@@ -106,6 +107,26 @@
       <div class="muted">You can select multiple images</div>
       <div id="gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
     </div>
+    {% if not is_edit and pending_gallery_images %}
+    <div class="field">
+      <label>Selected Gallery Images</label>
+      <div id="pending_gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+        {% for image in pending_gallery_images %}
+          <div class="pending-gallery-item" data-image-id="{{ image.id }}" style="position:relative; width:120px; height:80px;">
+            <img class="thumb" src="{{ image.image.url }}" alt="Pending gallery image" style="width:100%; height:100%;" />
+            <button type="button" class="remove-pending-gallery" data-image-id="{{ image.id }}" style="position:absolute; top:4px; right:4px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:22px; height:22px; line-height:22px; font-size:14px; cursor:pointer;">×</button>
+          </div>
+        {% endfor %}
+      </div>
+      <div id="pending_gallery_inputs">
+        {% for image in pending_gallery_images %}
+          <input type="hidden" name="pending_gallery_image_ids" value="{{ image.id }}" />
+        {% endfor %}
+      </div>
+      <div id="removed_pending_gallery_inputs"></div>
+      <div class="muted">Click × to remove selected image</div>
+    </div>
+    {% endif %}
     <div class="field">
       <label>Categories</label>
       <select id="category_ids" name="category_ids" multiple required size="6">
@@ -149,7 +170,6 @@
     const descriptionEditorElement = document.getElementById('description_editor');
     let descriptionEditorInstance = null;
     const featuredStorageKey = 'admin_dashboard_blog_featured_file';
-    const galleryStorageKey = 'admin_dashboard_blog_gallery_files';
 
     if (typeof ClassicEditor !== 'undefined' && descriptionEditorElement) {
       ClassicEditor
@@ -182,6 +202,7 @@
     const galleryInput = document.getElementById('gallery_images');
     const galleryPreview = document.getElementById('gallery_preview');
     let gallerySelectedFiles = [];
+    let isSubmitting = false;
 
     function hasErrorMessages() {
       return Boolean(document.querySelector('.message.error'));
@@ -218,35 +239,18 @@
     function saveFeaturedSelection(file) {
       if (!file) {
         sessionStorage.removeItem(featuredStorageKey);
-        return;
+        return Promise.resolve();
       }
-      fileToDataUrl(file).then(function (dataUrl) {
-        sessionStorage.setItem(featuredStorageKey, JSON.stringify({
-          name: file.name,
-          type: file.type,
-          lastModified: file.lastModified,
-          dataUrl: dataUrl
-        }));
-      }).catch(function () {});
-    }
-
-    function saveGallerySelection(files) {
-      if (!files || !files.length) {
-        sessionStorage.removeItem(galleryStorageKey);
-        return;
-      }
-      Promise.all(files.map(function (file) {
-        return fileToDataUrl(file).then(function (dataUrl) {
-          return {
+      return fileToDataUrl(file)
+        .then(function (dataUrl) {
+          sessionStorage.setItem(featuredStorageKey, JSON.stringify({
             name: file.name,
             type: file.type,
             lastModified: file.lastModified,
             dataUrl: dataUrl
-          };
-        });
-      })).then(function (serializedFiles) {
-        sessionStorage.setItem(galleryStorageKey, JSON.stringify(serializedFiles));
-      }).catch(function () {});
+          }));
+        })
+        .catch(function () {});
     }
 
     function buildFileKey(file) {
@@ -300,7 +304,6 @@
             gallerySelectedFiles.splice(i, 1);
             syncGalleryInputFiles();
             renderGalleryPreview();
-            saveGallerySelection(gallerySelectedFiles);
           });
 
           wrapper.appendChild(img);
@@ -335,44 +338,29 @@
       }
     }
 
-    function restoreGallerySelection() {
-      const raw = sessionStorage.getItem(galleryStorageKey);
-      if (!raw || !galleryInput) {
-        return;
-      }
-      try {
-        const payload = JSON.parse(raw);
-        if (!Array.isArray(payload)) {
-          return;
-        }
-        gallerySelectedFiles = payload
-          .map(function (fileMeta) {
-            return dataUrlToFile(fileMeta.dataUrl, fileMeta.name, fileMeta.type, fileMeta.lastModified);
-          })
-          .filter(function (file) {
-            return Boolean(file);
-          });
-        syncGalleryInputFiles();
-        renderGalleryPreview();
-      } catch (error) {
-        sessionStorage.removeItem(galleryStorageKey);
-      }
-    }
-
     if (!hasErrorMessages()) {
       sessionStorage.removeItem(featuredStorageKey);
-      sessionStorage.removeItem(galleryStorageKey);
     }
 
     if (blogForm) {
-      blogForm.addEventListener('submit', function () {
+      blogForm.addEventListener('submit', function (event) {
+        if (isSubmitting) {
+          return;
+        }
+        event.preventDefault();
         if (descriptionEditorInstance && descriptionEditorElement) {
           descriptionEditorElement.value = descriptionEditorInstance.getData();
         }
-        saveGallerySelection(gallerySelectedFiles);
+        const pendingSaves = [];
         if (featuredInput && featuredInput.files && featuredInput.files[0]) {
-          saveFeaturedSelection(featuredInput.files[0]);
+          pendingSaves.push(saveFeaturedSelection(featuredInput.files[0]));
         }
+        isSubmitting = true;
+        Promise.all(pendingSaves)
+          .catch(function () {})
+          .finally(function () {
+            blogForm.submit();
+          });
       });
     }
 
@@ -430,7 +418,33 @@
 
         syncGalleryInputFiles();
         renderGalleryPreview();
-        saveGallerySelection(gallerySelectedFiles);
+      });
+    }
+
+    const removePendingButtons = document.querySelectorAll('.remove-pending-gallery');
+    const pendingInputsContainer = document.getElementById('pending_gallery_inputs');
+    const removedPendingInputsContainer = document.getElementById('removed_pending_gallery_inputs');
+    if (removePendingButtons.length && pendingInputsContainer && removedPendingInputsContainer) {
+      removePendingButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+          const imageId = button.getAttribute('data-image-id');
+          const pendingItem = document.querySelector('.pending-gallery-item[data-image-id="' + imageId + '"]');
+          if (pendingItem) {
+            pendingItem.style.display = 'none';
+          }
+          const existingPendingInput = pendingInputsContainer.querySelector('input[value="' + imageId + '"]');
+          if (existingPendingInput) {
+            existingPendingInput.remove();
+          }
+          const existingRemoveInput = removedPendingInputsContainer.querySelector('input[value="' + imageId + '"]');
+          if (!existingRemoveInput) {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'remove_pending_gallery_image_ids';
+            hiddenInput.value = imageId;
+            removedPendingInputsContainer.appendChild(hiddenInput);
+          }
+        });
       });
     }
 
@@ -474,7 +488,6 @@
     enableClickMultiSelect('category_ids');
     enableClickMultiSelect('tag_ids');
     restoreFeaturedSelection();
-    restoreGallerySelection();
   })();
 </script>
 {% endblock %}

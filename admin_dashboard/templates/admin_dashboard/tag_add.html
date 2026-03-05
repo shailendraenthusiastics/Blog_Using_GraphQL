@@ -13,15 +13,15 @@
     {% csrf_token %}
     <div class="field">
       <label>Tag Name</label>
-      <input type="text" name="name" required maxlength="100" value="{% if tag %}{{ tag.name }}{% endif %}" />
+      <input type="text" name="name" required maxlength="100" value="{% if form_values %}{{ form_values.name|default:'' }}{% elif tag %}{{ tag.name }}{% endif %}" />
     </div>
     <div class="field">
       <label>Slug</label>
-      <input type="text" name="slug" maxlength="150" value="{% if tag and tag.slug %}{{ tag.slug }}{% endif %}" />
+      <input type="text" name="slug" maxlength="150" value="{% if form_values %}{{ form_values.slug|default:'' }}{% elif tag and tag.slug %}{{ tag.slug }}{% endif %}" />
       <div class="muted">Leave blank to auto-generate from tag name</div>
     </div>
     <div class="field">
-      <label><input type="checkbox" name="is_active" {% if tag %}{% if tag.is_active %}checked{% endif %}{% else %}checked{% endif %} /> Active</label>
+      <label><input type="checkbox" name="is_active" {% if form_values %}{% if form_values.is_active %}checked{% endif %}{% elif tag %}{% if tag.is_active %}checked{% endif %}{% else %}checked{% endif %} /> Active</label>
     </div>
     <div class="actions">
       <button class="btn" type="submit">{% if is_edit %}Update Tag{% else %}Create Tag{% endif %}</button>
