@@ -31,7 +31,7 @@ class BlogImage(models.Model):
     updated_at=models.DateTimeField(auto_now_add=True)
     
 
-class Blog(models.Model):  # if your model name is Post, use Post instead
+class Blog(models.Model):  
     title = models.CharField(max_length=150 )
     slug = models.SlugField(max_length=150, unique=True, blank=True)
     short_description = models.CharField(max_length=255)

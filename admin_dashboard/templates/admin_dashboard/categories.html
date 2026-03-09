@@ -1,3 +1,4 @@
+
 {% extends 'admin_dashboard/dashboard_base.html' %}
 
 {% block title %}Categories{% endblock %}
@@ -8,12 +9,15 @@
   <a class="btn" href="{% url 'admin_dashboard:dashboard_category_add' %}">Add Category</a>
 </div>
 
-<form method="get" class="filter-row">
+<div id="categoryListSuccess" class="message success" style="display:none; margin-bottom:10px;"></div>
+<div id="categoryListError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
+<form class="filter-row" onsubmit="return false;">
   <label for="status" style="font-size:22px;">Status</label>
-  <select id="status" name="status" onchange="this.form.submit()">
-    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
-    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
-    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+  <select id="status" name="status">
+    <option value="all">All</option>
+    <option value="active">Active</option>
+    <option value="inactive">Inactive</option>
   </select>
 </form>
 
@@ -30,54 +34,267 @@
         <th>Action</th>
       </tr>
     </thead>
-    <tbody>
-      {% for category in categories %}
-      <tr>
-        <td>{{ serial_start|add:forloop.counter }}</td>
-        <td>{{ category.name }}</td>
-        <td>{{ category.slug|default:'-' }}</td>
-        <td>
-          <span class="tag {% if category.is_active %}active{% else %}inactive{% endif %}">
-            {% if category.is_active %}Active{% else %}Inactive{% endif %}
-          </span>
-        </td>
-        <td>{{ category.created_at|date:'d M Y, h:i A' }}</td>
-        <td>{{ category.updated_at|date:'d M Y, h:i A' }}</td>
-        <td>
-          <div class="action-row">
-            <a class="link-btn" href="{% url 'admin_dashboard:dashboard_category_edit' category.id %}">Edit</a>
-            <form method="post" action="{% url 'admin_dashboard:dashboard_category_delete' category.id %}">
-            {% csrf_token %}
-              <button type="submit" class="action-btn" onclick="return confirm('Delete this category?')">Delete</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="7" class="muted">No categories found.</td></tr>
-      {% endfor %}
+    <tbody id="categoryTableRows">
+      <tr><td colspan="7" class="muted">Loading categories...</td></tr>
     </tbody>
   </table>
 </div>
 
-{% if categories.paginator.num_pages > 1 %}
-<div class="filter-links">
-  {% if categories.has_previous %}
-    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ categories.previous_page_number }}">Previous</a>
-  {% endif %}
+<div class="filter-links" id="categoryPagination"></div>
 
-  {% for page_num in categories.paginator.page_range %}
-    <a
-      class="chip-link {% if page_num == categories.number %}active{% endif %}"
-      href="?status={{ status_filter }}&page={{ page_num }}"
-    >
-      {{ page_num }}
-    </a>
-  {% endfor %}
+<script>
+const CATEGORIES_PER_PAGE = 10;
+let allCategories = [];
+let currentPage = 1;
 
-  {% if categories.has_next %}
-    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ categories.next_page_number }}">Next</a>
-  {% endif %}
-</div>
-{% endif %}
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return parsed.toLocaleString();
+}
+
+function setCategoryError(message) {
+  const errorBox = document.getElementById("categoryListError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+function showCategorySuccessMessage() {
+  let message = "";
+  try {
+    message = sessionStorage.getItem("dashboard_category_success") || "";
+    if (message) {
+      sessionStorage.removeItem("dashboard_category_success");
+    }
+  } catch (storageError) {
+    message = "";
+  }
+
+  const successBox = document.getElementById("categoryListSuccess");
+  if (!successBox) {
+    return;
+  }
+
+  if (!message) {
+    setCategorySuccess("");
+    return;
+  }
+
+  setCategorySuccess(message);
+}
+
+function setCategorySuccess(message) {
+  const successBox = document.getElementById("categoryListSuccess");
+  if (!successBox) {
+    return;
+  }
+
+  if (!message) {
+    successBox.style.display = "none";
+    successBox.textContent = "";
+    return;
+  }
+
+  successBox.style.display = "block";
+  successBox.textContent = message;
+}
+
+async function graphQLRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      query: query,
+      variables: variables || {}
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+
+  return payload.data;
+}
+
+function getStatusVariable() {
+  const status = document.getElementById("status").value;
+  if (status === "active") {
+    return true;
+  }
+  if (status === "inactive") {
+    return false;
+  }
+  return null;
+}
+
+function renderPagination() {
+  const pagination = document.getElementById("categoryPagination");
+  if (!pagination) {
+    return;
+  }
+
+  const totalPages = Math.ceil(allCategories.length / CATEGORIES_PER_PAGE);
+  if (totalPages <= 1) {
+    pagination.innerHTML = "";
+    return;
+  }
+
+  let html = "";
+
+  if (currentPage > 1) {
+    html += "<button class='chip-link nav' type='button' onclick='goToCategoryPage(" + (currentPage - 1) + ")'>Previous</button>";
+  }
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    const activeClass = page === currentPage ? "active" : "";
+    html += "<button class='chip-link " + activeClass + "' type='button' onclick='goToCategoryPage(" + page + ")'>" + page + "</button>";
+  }
+
+  if (currentPage < totalPages) {
+    html += "<button class='chip-link nav' type='button' onclick='goToCategoryPage(" + (currentPage + 1) + ")'>Next</button>";
+  }
+
+  pagination.innerHTML = html;
+}
+
+function renderCategories() {
+  const table = document.getElementById("categoryTableRows");
+  if (!table) {
+    return;
+  }
+
+  if (!allCategories.length) {
+    table.innerHTML = "<tr><td colspan='7' class='muted'>No categories found.</td></tr>";
+    renderPagination();
+    return;
+  }
+
+  const start = (currentPage - 1) * CATEGORIES_PER_PAGE;
+  const pageItems = allCategories.slice(start, start + CATEGORIES_PER_PAGE);
+
+  table.innerHTML = pageItems.map(function (category, index) {
+    const statusClass = category.isActive ? "active" : "inactive";
+    const statusText = category.isActive ? "Active" : "Inactive";
+
+    return ""
+      + "<tr>"
+      + "<td>" + (start + index + 1) + "</td>"
+      + "<td><a class='link-btn' href='/admin-dashboard/dashboard/categories/" + category.id + "/'>" + escapeHtml(category.name) + "</a></td>"
+      + "<td>" + escapeHtml(category.slug || "-") + "</td>"
+      + "<td><span class='tag " + statusClass + "'>" + statusText + "</span></td>"
+      + "<td>" + escapeHtml(formatDate(category.createdAt)) + "</td>"
+      + "<td>" + escapeHtml(formatDate(category.updatedAt)) + "</td>"
+      + "<td><div class='action-row'>"
+      + "<a class='link-btn' href='/admin-dashboard/dashboard/categories/" + category.id + "/edit/'>Edit</a>"
+        + "<button type='button' class='action-btn' onclick='deleteCategory(\"" + String(category.id) + "\", " + (category.isActive ? "true" : "false") + ")'>Delete</button>"
+      + "</div></td>"
+      + "</tr>";
+  }).join("");
+
+  renderPagination();
+}
+
+function goToCategoryPage(page) {
+  currentPage = page;
+  renderCategories();
+}
+
+async function loadCategories() {
+  setCategoryError("");
+  const table = document.getElementById("categoryTableRows");
+  if (table) {
+    table.innerHTML = "<tr><td colspan='7' class='muted'>Loading categories...</td></tr>";
+  }
+
+  try {
+    const data = await graphQLRequest(
+      "query AdminCategoryList($isActive: Boolean) {"
+      + " adminCategories(isActive: $isActive) {"
+      + " id name slug isActive createdAt updatedAt"
+      + " }"
+      + " }",
+      { isActive: getStatusVariable() }
+    );
+
+    allCategories = data.adminCategories || [];
+    currentPage = 1;
+    renderCategories();
+  } catch (error) {
+    setCategoryError(error.message || "Failed to load categories.");
+    if (table) {
+      table.innerHTML = "<tr><td colspan='7' class='muted'>Unable to load categories.</td></tr>";
+    }
+    const pagination = document.getElementById("categoryPagination");
+    if (pagination) {
+      pagination.innerHTML = "";
+    }
+  }
+}
+
+async function deleteCategory(id, isActive) {
+  const isCurrentlyActive = Boolean(isActive);
+  const confirmationMessage = isCurrentlyActive
+    ? "This category is active. Move it to inactive?"
+    : "This category is inactive. Activate it again?";
+
+  if (!confirm(confirmationMessage)) {
+    return;
+  }
+
+  setCategorySuccess("");
+  setCategoryError("");
+
+  try {
+    const data = await graphQLRequest(
+      "mutation DeleteCategory($id: ID!) {"
+      + " deleteCategory(id: $id) { success }"
+      + " }",
+      { id: id }
+    );
+
+    if (!data.deleteCategory || !data.deleteCategory.success) {
+      throw new Error("Delete operation was not successful.");
+    }
+
+    setCategorySuccess(isCurrentlyActive ? "Category moved to inactive." : "Category activated successfully.");
+
+    await loadCategories();
+  } catch (error) {
+    setCategoryError(error.message || "Failed to delete category.");
+  }
+}
+
+document.getElementById("status").addEventListener("change", loadCategories);
+showCategorySuccessMessage();
+loadCategories();
+</script>
 {% endblock %}

@@ -8,12 +8,14 @@
   <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_categories' %}">Back to Categories</a>
 </div>
 
+<div id="categoryDetailError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
 <div class="panel" style="padding:16px; margin-bottom:14px;">
-  <p><strong>Name:</strong> {{ category.name }}</p>
-  <p><strong>Slug:</strong> {{ category.slug|default:'-' }}</p>
-  <p><strong>Status:</strong> {% if category.is_active %}Active{% else %}Inactive{% endif %}</p>
-  <p><strong>Created:</strong> {{ category.created_at|date:'d M Y, h:i A' }}</p>
-  <p><strong>Updated:</strong> {{ category.updated_at|date:'d M Y, h:i A' }}</p>
+  <p><strong>Name:</strong> <span id="categoryName">-</span></p>
+  <p><strong>Slug:</strong> <span id="categorySlug">-</span></p>
+  <p><strong>Status:</strong> <span id="categoryStatus">-</span></p>
+  <p><strong>Created:</strong> <span id="categoryCreated">-</span></p>
+  <p><strong>Updated:</strong> <span id="categoryUpdated">-</span></p>
 </div>
 
 <div class="panel">
@@ -26,18 +28,161 @@
         <th>Status</th>
       </tr>
     </thead>
-    <tbody>
-      {% for blog in related_blogs %}
-      <tr>
-        <td>{{ forloop.counter }}</td>
-        <td><a class="link-btn" href="{% url 'admin_dashboard:dashboard_blog_detail' blog.id %}">{{ blog.title }}</a></td>
-        <td>{{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</td>
-        <td>{% if blog.is_active %}Active{% else %}Inactive{% endif %}</td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="4" class="muted">No blogs linked to this category.</td></tr>
-      {% endfor %}
+    <tbody id="categoryBlogRows">
+      <tr><td colspan="4" class="muted">Loading...</td></tr>
     </tbody>
   </table>
 </div>
+
+<div id="categoryDetailConfig" data-category-id="{% if category %}{{ category.id }}{% endif %}"></div>
+
+<script>
+const categoryDetailConfig = document.getElementById("categoryDetailConfig");
+const initialCategoryDetailId = categoryDetailConfig && categoryDetailConfig.dataset.categoryId
+  ? categoryDetailConfig.dataset.categoryId
+  : null;
+
+function parseCategoryIdFromPath() {
+  const match = window.location.pathname.match(/\/categories\/(\d+)\//);
+  return match ? match[1] : null;
+}
+
+function currentCategoryId() {
+  return initialCategoryDetailId || parseCategoryIdFromPath();
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return parsed.toLocaleString();
+}
+
+function authorName(author) {
+  if (!author) {
+    return "Unknown";
+  }
+  const username = (author.username || "").trim();
+  const cleanedUsername = username.replace(/_[0-9]+$/, "");
+  return cleanedUsername || username || "Unknown";
+}
+
+function setCategoryDetailError(message) {
+  const errorBox = document.getElementById("categoryDetailError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+async function graphQLRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({ query: query, variables: variables || {} })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+
+  return payload.data;
+}
+
+function renderRelatedBlogs(blogs) {
+  const rows = document.getElementById("categoryBlogRows");
+  if (!rows) {
+    return;
+  }
+
+  if (!blogs.length) {
+    rows.innerHTML = "<tr><td colspan='4' class='muted'>No blogs linked to this category.</td></tr>";
+    return;
+  }
+
+  rows.innerHTML = blogs.map(function (blog, index) {
+    const statusText = blog.isActive ? "Active" : "Inactive";
+    return ""
+      + "<tr>"
+      + "<td>" + (index + 1) + "</td>"
+      + "<td><a class='link-btn' href='/admin-dashboard/dashboard/blogs/" + blog.id + "/'>" + escapeHtml(blog.title || "-") + "</a></td>"
+      + "<td>" + escapeHtml(authorName(blog.author)) + "</td>"
+      + "<td>" + statusText + "</td>"
+      + "</tr>";
+  }).join("");
+}
+
+async function loadCategoryDetail() {
+  setCategoryDetailError("");
+  const selectedCategoryId = currentCategoryId();
+  if (!selectedCategoryId) {
+    setCategoryDetailError("Category ID is missing in URL.");
+    return;
+  }
+
+  try {
+    const data = await graphQLRequest(
+      "query CategoryDetailData {"
+      + " adminCategories { id name slug isActive createdAt updatedAt }"
+      + " adminBlogs { id title isActive author { username } categories { id } }"
+      + " }"
+    );
+
+    const category = (data.adminCategories || []).find(function (item) {
+      return String(item.id) === String(selectedCategoryId);
+    });
+    if (!category) {
+      throw new Error("Category not found.");
+    }
+
+    document.getElementById("categoryName").textContent = category.name || "-";
+    document.getElementById("categorySlug").textContent = category.slug || "-";
+    document.getElementById("categoryStatus").textContent = category.isActive ? "Active" : "Inactive";
+    document.getElementById("categoryCreated").textContent = formatDate(category.createdAt);
+    document.getElementById("categoryUpdated").textContent = formatDate(category.updatedAt);
+
+    const relatedBlogs = (data.adminBlogs || []).filter(function (blog) {
+      const categoryIds = (blog.categories || []).map(function (categoryItem) {
+        return String(categoryItem.id);
+      });
+      return categoryIds.includes(String(selectedCategoryId));
+    });
+    renderRelatedBlogs(relatedBlogs);
+  } catch (error) {
+    setCategoryDetailError(error.message || "Failed to load category detail.");
+    const rows = document.getElementById("categoryBlogRows");
+    if (rows) {
+      rows.innerHTML = "<tr><td colspan='4' class='muted'>Unable to load related blogs.</td></tr>";
+    }
+  }
+}
+
+loadCategoryDetail();
+</script>
 {% endblock %}

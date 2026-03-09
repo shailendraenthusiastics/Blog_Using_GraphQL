@@ -8,28 +8,228 @@
   <a class="btn secondary" href="{% url 'admin_dashboard:logout' %}">Logout</a>
 </div>
 
-<div class="panel" style="padding: 20px;">
+<div id="homeError" class="message error" style="display:none; margin-bottom: 10px;"></div>
+
+<div class="panel" style="padding: 10px; box-shadow:none; margin-bottom: 10px; border:none;">
   <div class="home-stats">
     <div class="home-card blog">
-      <div class="label">Blog</div>
-      <div class="value">{{ total_blogs }}</div>
+      <div class="label"> Total Blog</div>
+      <div class="value" id="totalBlogs">0</div>
     </div>
     <div class="home-card tag">
-      <div class="label">Tag</div>
-      <div class="value">{{ total_tags }}</div>
+      <div class="label">Inactive Blogs</div>
+      <div class="value" id="inactiveBlogs">0</div>
     </div>
     <div class="home-card category">
-      <div class="label">Category</div>
-      <div class="value">{{ total_categories }}</div>
+      <div class="label">Active Blogs</div>
+      <div class="value" id="activeBlogs">0</div>
     </div>
   </div>
-  <div class="filter-links">
-    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_blogs' %}?status=active">Blogs Active: {{ active_blogs }}</a>
-    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_blogs' %}?status=inactive">Blogs Inactive: {{ inactive_blogs }}</a>
-    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_categories' %}?status=active">Categories Active: {{ active_categories }}</a>
-    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_categories' %}?status=inactive">Categories Inactive: {{ inactive_categories }}</a>
-    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_tags' %}?status=active">Tags Active: {{ active_tags }}</a>
-    <a class="chip-link" href="{% url 'admin_dashboard:dashboard_tags' %}?status=inactive">Tags Inactive: {{ inactive_tags }}</a>
+</div>
+
+<div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none; margin-bottom: 10px;">
+  <div class="home-stats">
+    <div class="home-card blog">
+      <div class="label"> Total Category</div>
+      <div class="value" id="totalCategories">0</div>
+    </div>
+    <div class="home-card tag">
+      <div class="label">Inactive Category</div>
+      <div class="value" id="inactiveCategories">0</div>
+    </div>
+    <div class="home-card category">
+      <div class="label">Active Category</div>
+      <div class="value" id="activeCategories">0</div>
+    </div>
   </div>
 </div>
+
+<div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none; margin-bottom: 10px;">
+  <div class="home-stats">
+    <div class="home-card blog">
+      <div class="label"> Total Tags</div>
+      <div class="value" id="totalTags">0</div>
+    </div>
+    <div class="home-card tag">
+      <div class="label">Inactive Tags</div>
+      <div class="value" id="inactiveTags">0</div>
+    </div>
+    <div class="home-card category">
+      <div class="label">Active Tags</div>
+      <div class="value" id="activeTags">0</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none;">
+  <div class="top-row" style="margin-bottom: 10px;">
+    <h1 class="page-title" style="font-size: 34px;">Recent Blogs (10)</h1>
+    <a class="btn-secondary" href="{% url 'admin_dashboard:dashboard_blogs' %}">Show All</a>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>S.No</th>
+        <th>Title</th>
+        <th>Featured</th>
+        <th>Slug</th>
+        <th>Author</th>
+        <th>Created</th>
+        <th>Updated</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="homeBlogRows">
+      <tr>
+        <td colspan="8" class="muted">Loading blogs...</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+<script>
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function authorName(author) {
+  if (!author) {
+    return "Unknown";
+  }
+  const username = (author.username || "").trim();
+  const cleanedUsername = username.replace(/_[0-9]+$/, "");
+  return cleanedUsername || username || "Unknown";
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return parsed.toLocaleString();
+}
+
+function featuredImageUrl(blogId) {
+  return "/admin-dashboard/dashboard/blogs/" + encodeURIComponent(blogId) + "/featured-image/";
+}
+
+function setError(message) {
+  const errorBox = document.getElementById("homeError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+async function fetchGraphQL(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({ query: query })
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const errorMessage = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Failed to fetch dashboard data.";
+    throw new Error(errorMessage);
+  }
+
+  return payload.data;
+}
+
+function renderRecentBlogs(blogs) {
+  const rows = document.getElementById("homeBlogRows");
+  if (!rows) {
+    return;
+  }
+
+  if (!blogs.length) {
+    rows.innerHTML = "<tr><td colspan='8' class='muted'>No blogs found.</td></tr>";
+    return;
+  }
+
+  rows.innerHTML = blogs.map(function (blog, index) {
+    const safeTitle = escapeHtml(blog.title || "-");
+    const safeSlug = escapeHtml(blog.slug || "-");
+    const safeAuthor = escapeHtml(authorName(blog.author));
+    const statusClass = blog.isActive ? "active" : "inactive";
+    const statusText = blog.isActive ? "Active" : "Inactive";
+
+    return ""
+      + "<tr>"
+      + "<td>" + (index + 1) + "</td>"
+      + "<td><a class='link-btn' href='/admin-dashboard/dashboard/blogs/" + blog.id + "/'>" + safeTitle + "</a></td>"
+      + "<td><img class='thumb' src='" + featuredImageUrl(blog.id) + "' alt='Featured image for " + safeTitle + "' loading='lazy' decoding='async' /></td>"
+      + "<td>" + safeSlug + "</td>"
+      + "<td>" + safeAuthor + "</td>"
+      + "<td>" + escapeHtml(formatDate(blog.createdAt)) + "</td>"
+      + "<td>" + escapeHtml(formatDate(blog.updatedAt)) + "</td>"
+      + "<td><span class='tag " + statusClass + "'>" + statusText + "</span></td>"
+      + "</tr>";
+  }).join("");
+}
+
+async function loadHomeData() {
+  setError("");
+
+  try {
+    const data = await fetchGraphQL(
+      "query HomeDashboard {"
+      + " adminDashboardStats {"
+      + " totalBlogs activeBlogs inactiveBlogs"
+      + " totalCategories activeCategories inactiveCategories"
+      + " totalTags activeTags inactiveTags"
+      + " }"
+      + " adminBlogs(isActive: true, limit: 10) {"
+      + " id title slug isActive createdAt updatedAt"
+      + " author { username }"
+      + " }"
+      + " }"
+    );
+
+    const stats = data.adminDashboardStats || {};
+    document.getElementById("totalBlogs").textContent = stats.totalBlogs || 0;
+    document.getElementById("inactiveBlogs").textContent = stats.inactiveBlogs || 0;
+    document.getElementById("activeBlogs").textContent = stats.activeBlogs || 0;
+    document.getElementById("totalCategories").textContent = stats.totalCategories || 0;
+    document.getElementById("inactiveCategories").textContent = stats.inactiveCategories || 0;
+    document.getElementById("activeCategories").textContent = stats.activeCategories || 0;
+    document.getElementById("totalTags").textContent = stats.totalTags || 0;
+    document.getElementById("inactiveTags").textContent = stats.inactiveTags || 0;
+    document.getElementById("activeTags").textContent = stats.activeTags || 0;
+
+    const recentBlogs = data.adminBlogs || [];
+    renderRecentBlogs(recentBlogs);
+  } catch (error) {
+    setError(error.message || "Failed to load dashboard data.");
+    const rows = document.getElementById("homeBlogRows");
+    if (rows) {
+      rows.innerHTML = "<tr><td colspan='8' class='muted'>Unable to load blogs.</td></tr>";
+    }
+  }
+}
+
+loadHomeData();
+</script>
 {% endblock %}

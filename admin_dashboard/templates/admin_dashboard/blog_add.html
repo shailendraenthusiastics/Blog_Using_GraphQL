@@ -8,486 +8,958 @@
   <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_blogs' %}">Back</a>
 </div>
 
+<div id="blogFormError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
+<style>
+  .field-error {
+    display: none;
+    margin-top: 6px;
+    color: #b91c1c;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+</style>
+
 <div class="panel" style="padding:16px;">
-  <form method="post" enctype="multipart/form-data" novalidate>
-    {% csrf_token %}
-    {% if non_field_errors %}
-      <div class="field" style="margin-bottom:10px;">
-        {% for error in non_field_errors %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
+  <form id="blogForm" enctype="multipart/form-data" novalidate>
     <div class="field">
       <label>Title</label>
-      <input type="text" name="title" required maxlength="150" value="{% if is_edit %}{{ form_values.title|default:blog.title|default:'' }}{% else %}{{ form_values.title|default:'' }}{% endif %}" />
-      {% if field_errors.title %}
-        {% for error in field_errors.title %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      {% endif %}
+      <input type="text" id="title" name="title" required maxlength="150" />
+      <div id="title_error" class="field-error"></div>
+    </div>
+    <div class="field">
+      <label>Slug</label>
+      <input type="text" id="slug" name="slug" maxlength="150" />
+      <div class="muted">Leave blank to auto-generate from title</div>
+      <div id="slug_error" class="field-error"></div>
     </div>
     <div class="field">
       <label>Short Description</label>
-      <input type="text" name="short_description" required maxlength="255" value="{% if is_edit %}{{ form_values.short_description|default:blog.short_description|default:'' }}{% else %}{{ form_values.short_description|default:'' }}{% endif %}" />
-      {% if field_errors.short_description %}
-        {% for error in field_errors.short_description %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      {% endif %}
+      <input type="text" id="short_description" name="short_description" required maxlength="255" />
+      <div id="short_description_error" class="field-error"></div>
     </div>
     <div class="field">
       <label>Description</label>
-      <textarea id="description_editor" name="description" required>{% if is_edit %}{{ form_values.description|default:blog.description|default:'' }}{% else %}{{ form_values.description|default:'' }}{% endif %}</textarea>
-      {% if field_errors.description %}
-        {% for error in field_errors.description %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      {% endif %}
+      <textarea id="description_editor" name="description" required></textarea>
+      <div id="description_error" class="field-error"></div>
     </div>
-    {% if not is_edit %}
     <div class="field">
       <label>Author Name</label>
-      <input type="text" name="author_name" required maxlength="150" value="{{ form_values.author_name|default:'' }}" placeholder="Enter author name" />
-      {% if field_errors.author_name %}
-        {% for error in field_errors.author_name %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      {% endif %}
+      <input type="text" id="author_name" name="author_name" required maxlength="150" placeholder="Enter author name" />
+      <div id="author_name_error" class="field-error"></div>
     </div>
-    {% else %}
-    <div class="field">
-      <label>Author Name</label>
-      <input type="text" name="author_name" required maxlength="150" value="{{ form_values.author_name|default:blog.author.get_full_name|default:blog.author.username }}" />
-      {% if field_errors.author_name %}
-        {% for error in field_errors.author_name %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      {% endif %}
-    </div>
-    {% endif %}
+
     <div class="field">
       <label>Featured Image</label>
-      <input id="featured_image" type="file" name="featured_image" accept=".jpg,.jpeg,.png" {% if is_edit %}{% if not blog or not blog.featured_image or pending_delete_featured_image %}required{% endif %}{% else %}{% if not pending_featured_image %}required{% endif %}{% endif %} />
-      <input type="hidden" id="delete_featured_image" name="delete_featured_image" value="{% if pending_delete_featured_image %}1{% else %}0{% endif %}" />
-      <input type="hidden" id="pending_featured_image_id" name="pending_featured_image_id" value="{% if pending_featured_image %}{{ pending_featured_image.id }}{% endif %}" />
-      <div id="featured_preview" style="margin-top:10px; {% if is_edit %}{% if blog and blog.featured_image and not pending_delete_featured_image %}display:block;{% else %}display:none;{% endif %}{% else %}{% if pending_featured_image %}display:block;{% else %}display:none;{% endif %}{% endif %}; position:relative; width:260px;">
-        <img id="featured_preview_img" src="{% if is_edit %}{% if blog and blog.featured_image and not pending_delete_featured_image %}{{ blog.featured_image.url }}{% endif %}{% else %}{% if pending_featured_image %}{{ pending_featured_image.image.url }}{% endif %}{% endif %}" alt="Featured preview" style="width:260px; max-height:180px; border:1px solid #d1d5db; border-radius:6px; object-fit:cover;" />
-        <button type="button" id="remove_featured_image" style="position:absolute; top:6px; right:6px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:24px; height:24px; line-height:24px; font-size:14px; cursor:pointer;">×</button>
+      <input id="featured_image" type="file" name="featured_image" accept=".jpg,.jpeg,.png" />
+      <div id="featured_preview" style="margin-top:10px; display:none; position:relative; width:260px;">
+        <img id="featured_preview_img" src="" alt="Featured preview" style="width:260px; max-height:180px; border:1px solid #d1d5db; border-radius:6px; object-fit:cover;" />
+        <button type="button" id="remove_featured_image" style="position:absolute; top:6px; right:6px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:24px; height:24px; line-height:24px; font-size:14px; cursor:pointer;">x</button>
       </div>
-      <div class="muted">Click × to remove featured image</div>
-      {% if field_errors.featured_image %}
-        {% for error in field_errors.featured_image %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      {% endif %}
+      <div class="muted" id="featuredHelp">Upload JPG or PNG image (max 5 MB)</div>
+      <div id="featured_image_error" class="field-error"></div>
     </div>
-    {% if is_edit and blog.gallery.all %}
-    <div class="field">
+
+    <div class="field" id="existingGallerySection" style="display:none;">
       <label>Existing Gallery Images</label>
       <div id="existing_gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-        {% for image in blog.gallery.all %}
-          <div class="existing-gallery-item" data-image-id="{{ image.id }}" style="position:relative; width:120px; height:80px; {% if image.id|stringformat:"s" in pending_remove_gallery_ids %}display:none;{% endif %}">
-            <img class="thumb" src="{{ image.image.url }}" alt="Existing gallery image" style="width:100%; height:100%;" />
-            <button type="button" class="remove-existing-gallery" data-image-id="{{ image.id }}" style="position:absolute; top:4px; right:4px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:22px; height:22px; line-height:22px; font-size:14px; cursor:pointer;">×</button>
-          </div>
-        {% endfor %}
       </div>
-      <div id="removed_gallery_inputs">
-        {% for removed_id in pending_remove_gallery_ids %}
-          <input type="hidden" name="remove_gallery_image_ids" value="{{ removed_id }}" />
-        {% endfor %}
-      </div>
-      <div class="muted">Click × on image to remove it on update</div>
+      <div class="muted">Click x on image to remove it in update</div>
     </div>
-    {% endif %}
+
     <div class="field">
       <label>{% if is_edit %}Add More Gallery Images{% else %}Gallery Images{% endif %}</label>
       <input id="gallery_images" type="file" name="gallery_images[]" accept=".jpg,.jpeg,.png" multiple />
       <div class="muted">You can select multiple images</div>
       <div id="gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+      <div id="gallery_images_error" class="field-error"></div>
     </div>
-    {% if not is_edit and pending_gallery_images %}
-    <div class="field">
-      <label>Selected Gallery Images</label>
-      <div id="pending_gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-        {% for image in pending_gallery_images %}
-          <div class="pending-gallery-item" data-image-id="{{ image.id }}" style="position:relative; width:120px; height:80px;">
-            <img class="thumb" src="{{ image.image.url }}" alt="Pending gallery image" style="width:100%; height:100%;" />
-            <button type="button" class="remove-pending-gallery" data-image-id="{{ image.id }}" style="position:absolute; top:4px; right:4px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:22px; height:22px; line-height:22px; font-size:14px; cursor:pointer;">×</button>
-          </div>
-        {% endfor %}
-      </div>
-      <div id="pending_gallery_inputs">
-        {% for image in pending_gallery_images %}
-          <input type="hidden" name="pending_gallery_image_ids" value="{{ image.id }}" />
-        {% endfor %}
-      </div>
-      <div id="removed_pending_gallery_inputs"></div>
-      <div class="muted">Click × to remove selected image</div>
-    </div>
-    {% endif %}
+
     <div class="field">
       <label>Categories</label>
       <select id="category_ids" name="category_ids" multiple required size="6">
-        {% for category in categories %}
-          <option value="{{ category.id }}" {% if category.id|stringformat:"s" in selected_category_ids %}selected{% endif %}>{{ category.name }}</option>
-        {% endfor %}
       </select>
       <div class="muted">Click one option, then click another to keep both selected</div>
-      {% if field_errors.category_ids %}
-        {% for error in field_errors.category_ids %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      {% endif %}
+      <div id="category_ids_error" class="field-error"></div>
     </div>
+
     <div class="field">
       <label>Tags</label>
       <select id="tag_ids" name="tag_ids" multiple required size="6">
-        {% for tag in tags %}
-          <option value="{{ tag.id }}" {% if tag.id|stringformat:"s" in selected_tag_ids %}selected{% endif %}>{{ tag.name }}</option>
-        {% endfor %}
       </select>
       <div class="muted">Click one option, then click another to keep both selected</div>
-      {% if field_errors.tag_ids %}
-        {% for error in field_errors.tag_ids %}
-          <div class="message error">{{ error }}</div>
-        {% endfor %}
-      {% endif %}
+      <div id="tag_ids_error" class="field-error"></div>
     </div>
+
     <div class="field">
-      <label><input type="checkbox" name="is_active" {% if form_values.is_active %}checked{% endif %} /> Active</label>
+      <label><input type="checkbox" id="is_active" name="is_active" checked /> Active</label>
     </div>
+
     <div class="actions">
-      <button class="btn" type="submit">{% if is_edit %}Update Blog{% else %}Create Blog{% endif %}</button>
+      <button class="btn" id="submitButton" type="submit">{% if is_edit %}Update Blog{% else %}Create Blog{% endif %}</button>
     </div>
   </form>
 </div>
+
+<div
+  id="blogPageConfig"
+  data-is-edit="{% if is_edit %}true{% else %}false{% endif %}"
+  data-blog-id="{% if blog %}{{ blog.id }}{% endif %}"
+></div>
+
 <script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
 <script>
-  (function () {
-    const blogForm = document.querySelector('form[method="post"]');
-    const descriptionEditorElement = document.getElementById('description_editor');
-    let descriptionEditorInstance = null;
-    const featuredStorageKey = 'admin_dashboard_blog_featured_file';
+const blogPageConfig = document.getElementById("blogPageConfig");
+const isEditBlogPage = Boolean(blogPageConfig && blogPageConfig.dataset.isEdit === "true");
+const initialBlogId = blogPageConfig && blogPageConfig.dataset.blogId ? blogPageConfig.dataset.blogId : null;
 
-    if (typeof ClassicEditor !== 'undefined' && descriptionEditorElement) {
-      ClassicEditor
-        .create(descriptionEditorElement, {
-          ckfinder: {
-            uploadUrl: "{% url 'admin_dashboard:ckeditor_upload' %}",
-          },
-          toolbar: [
-            'undo', 'redo', '|',
-            'heading', '|',
-            'bold', 'italic', 'link', '|',
-            'bulletedList', 'numberedList', '|',
-            'insertTable', 'uploadImage', 'blockQuote'
-          ],
-          image: {
-            toolbar: ['imageTextAlternative', 'imageStyle:inline', 'imageStyle:block', 'imageStyle:side']
-          }
-        })
-        .then(function (editor) {
-          descriptionEditorInstance = editor;
-        })
-        .catch(function () {});
+const blogForm = document.getElementById("blogForm");
+const submitButton = document.getElementById("submitButton");
+const featuredInput = document.getElementById("featured_image");
+const featuredPreview = document.getElementById("featured_preview");
+const featuredPreviewImg = document.getElementById("featured_preview_img");
+const removeFeaturedButton = document.getElementById("remove_featured_image");
+const galleryInput = document.getElementById("gallery_images");
+const galleryPreview = document.getElementById("gallery_preview");
+const existingGallerySection = document.getElementById("existingGallerySection");
+const existingGalleryPreview = document.getElementById("existing_gallery_preview");
+const descriptionEditorElement = document.getElementById("description_editor");
+
+let descriptionEditorInstance = null;
+let pendingDescriptionValue = "";
+let existingFeaturedImageUrl = "";
+let keptGalleryIds = [];
+let newGalleryFiles = [];
+
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const DOUBLE_SPACE_PATTERN = /(?<=\S) {2,}(?=\S)/;
+const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
+
+const FIELD_ERROR_IDS = {
+  title: "title_error",
+  slug: "slug_error",
+  shortDescription: "short_description_error",
+  description: "description_error",
+  authorName: "author_name_error",
+  featuredImage: "featured_image_error",
+  galleryImages: "gallery_images_error",
+  categoryIds: "category_ids_error",
+  tagIds: "tag_ids_error"
+};
+
+function parseBlogIdFromPath() {
+  const match = window.location.pathname.match(/\/blogs\/(\d+)\//);
+  return match ? match[1] : null;
+}
+
+function getCurrentBlogId() {
+  return initialBlogId || parseBlogIdFromPath();
+}
+
+function setBlogFormError(message) {
+  const errorBox = document.getElementById("blogFormError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function authorName(author) {
+  if (!author) {
+    return "";
+  }
+  const username = (author.username || "").trim();
+  const cleanedUsername = username.replace(/_[0-9]+$/, "");
+  return cleanedUsername || username || "";
+}
+
+function setDescriptionValue(value) {
+  const normalized = value || "";
+  pendingDescriptionValue = normalized;
+  descriptionEditorElement.value = normalized;
+  if (descriptionEditorInstance) {
+    descriptionEditorInstance.setData(normalized);
+  }
+}
+
+function getDescriptionValue() {
+  if (descriptionEditorInstance) {
+    return descriptionEditorInstance.getData();
+  }
+  return descriptionEditorElement.value || "";
+}
+
+function setFieldError(fieldKey, message) {
+  const errorElement = document.getElementById(FIELD_ERROR_IDS[fieldKey] || "");
+  if (!errorElement) {
+    return;
+  }
+
+  if (!message) {
+    errorElement.style.display = "none";
+    errorElement.textContent = "";
+    return;
+  }
+
+  errorElement.style.display = "block";
+  errorElement.textContent = message;
+}
+
+function clearAllFieldErrors() {
+  Object.keys(FIELD_ERROR_IDS).forEach(function (key) {
+    setFieldError(key, "");
+  });
+}
+
+function extractPlainText(html) {
+  const temporary = document.createElement("div");
+  temporary.innerHTML = html || "";
+  return (temporary.textContent || temporary.innerText || "").replace(/\u00a0/g, " ").trim();
+}
+
+function toTitleCase(value) {
+  return String(value || "")
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean)
+    .map(function (word) {
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+function validateImageFile(file) {
+  if (!file) {
+    return "";
+  }
+
+  const fileName = String(file.name || "").toLowerCase();
+  if (fileName.indexOf(".") === -1) {
+    return "Only JPG and PNG files are allowed.";
+  }
+
+  const extension = fileName.split(".").pop();
+  if (!ALLOWED_IMAGE_EXTENSIONS.has(extension)) {
+    return "Only JPG and PNG files are allowed.";
+  }
+
+  if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    return "File size must be 5 MB or less.";
+  }
+
+  return "";
+}
+
+function collectFormValues() {
+  const titleRaw = document.getElementById("title").value || "";
+  const slugRaw = document.getElementById("slug").value || "";
+  const shortDescriptionRaw = document.getElementById("short_description").value || "";
+  const descriptionRaw = getDescriptionValue() || "";
+  const authorNameRaw = document.getElementById("author_name").value || "";
+  const featuredFile = featuredInput.files && featuredInput.files[0] ? featuredInput.files[0] : null;
+
+  return {
+    titleRaw: titleRaw,
+    title: titleRaw.trim(),
+    slugRaw: slugRaw,
+    slug: slugRaw.trim(),
+    shortDescriptionRaw: shortDescriptionRaw,
+    shortDescription: shortDescriptionRaw.trim(),
+    descriptionRaw: descriptionRaw,
+    description: descriptionRaw.trim(),
+    descriptionText: extractPlainText(descriptionRaw),
+    authorNameRaw: authorNameRaw,
+    authorName: authorNameRaw.trim(),
+    categoryIds: getSelectedValues("category_ids"),
+    tagIds: getSelectedValues("tag_ids"),
+    isActive: document.getElementById("is_active").checked,
+    featuredFile: featuredFile
+  };
+}
+
+function validateFormFields(values) {
+  const errors = {
+    title: "",
+    slug: "",
+    shortDescription: "",
+    description: "",
+    authorName: "",
+    featuredImage: "",
+    galleryImages: "",
+    categoryIds: "",
+    tagIds: ""
+  };
+
+  if (!values.title) {
+    errors.title = "Title is required.";
+  } else if (values.titleRaw !== values.title) {
+    errors.title = "Title cannot have leading or trailing spaces.";
+  } else if (DOUBLE_SPACE_PATTERN.test(values.title)) {
+    errors.title = "Title cannot contain multiple spaces between words.";
+  } else if (values.title.length > 150) {
+    errors.title = "Title must be 150 characters or fewer.";
+  } else if (values.title !== toTitleCase(values.title)) {
+    errors.title = "Title must be in title case.";
+  }
+
+  if (values.slug) {
+    if (values.slugRaw !== values.slug) {
+      errors.slug = "Slug cannot have leading or trailing spaces.";
+    } else if (DOUBLE_SPACE_PATTERN.test(values.slug)) {
+      errors.slug = "Slug cannot contain multiple spaces between words.";
+    } else if (values.slug.length > 150) {
+      errors.slug = "Slug must be 150 characters or fewer.";
+    } else if (!SLUG_PATTERN.test(values.slug)) {
+      errors.slug = "Slug must contain lowercase letters, numbers, and hyphens only.";
     }
+  }
 
-    const featuredInput = document.getElementById('featured_image');
-    const featuredPreview = document.getElementById('featured_preview');
-    const featuredPreviewImg = document.getElementById('featured_preview_img');
-    const removeFeaturedButton = document.getElementById('remove_featured_image');
-    const deleteFeaturedInput = document.getElementById('delete_featured_image');
-    const galleryInput = document.getElementById('gallery_images');
-    const galleryPreview = document.getElementById('gallery_preview');
-    let gallerySelectedFiles = [];
-    let isSubmitting = false;
+  if (!values.shortDescription) {
+    errors.shortDescription = "Short description is required.";
+  } else if (values.shortDescriptionRaw !== values.shortDescription) {
+    errors.shortDescription = "Short description cannot have leading or trailing spaces.";
+  } else if (DOUBLE_SPACE_PATTERN.test(values.shortDescription)) {
+    errors.shortDescription = "Short description cannot contain multiple spaces between words.";
+  } else if (values.shortDescription.length > 255) {
+    errors.shortDescription = "Short description must be 255 characters or fewer.";
+  }
 
-    function hasErrorMessages() {
-      return Boolean(document.querySelector('.message.error'));
-    }
+  if (!values.descriptionText) {
+    errors.description = "Description is required.";
+  } else if (DOUBLE_SPACE_PATTERN.test(values.descriptionText)) {
+    errors.description = "Description cannot contain multiple spaces between words.";
+  }
 
-    function fileToDataUrl(file) {
-      return new Promise(function (resolve, reject) {
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          resolve(event.target.result);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    }
+  if (!values.authorName) {
+    errors.authorName = "Author name is required.";
+  } else if (values.authorNameRaw !== values.authorName) {
+    errors.authorName = "Author name cannot have leading or trailing spaces.";
+  } else if (DOUBLE_SPACE_PATTERN.test(values.authorName)) {
+    errors.authorName = "Author name cannot contain multiple spaces between words.";
+  } else if (values.authorName.length > 150) {
+    errors.authorName = "Author name must be 150 characters or fewer.";
+  }
 
-    function dataUrlToFile(dataUrl, fileName, mimeType, lastModified) {
-      const parts = String(dataUrl || '').split(',');
-      if (parts.length !== 2) {
-        return null;
+  if (!values.categoryIds.length) {
+    errors.categoryIds = "At least one category is required.";
+  }
+
+  if (!values.tagIds.length) {
+    errors.tagIds = "At least one tag is required.";
+  }
+
+  if (!isEditBlogPage && !values.featuredFile) {
+    errors.featuredImage = "Featured image is required.";
+  } else if (values.featuredFile) {
+    errors.featuredImage = validateImageFile(values.featuredFile);
+  }
+
+  if (newGalleryFiles.length) {
+    const galleryErrors = [];
+    newGalleryFiles.forEach(function (file) {
+      const imageError = validateImageFile(file);
+      if (imageError) {
+        galleryErrors.push(file.name + ": " + imageError);
       }
-      const binary = atob(parts[1]);
-      const length = binary.length;
-      const bytes = new Uint8Array(length);
-      for (let index = 0; index < length; index += 1) {
-        bytes[index] = binary.charCodeAt(index);
+    });
+    if (galleryErrors.length) {
+      errors.galleryImages = galleryErrors.join(" | ");
+    }
+  }
+
+  return errors;
+}
+
+function applyFieldErrors(errors) {
+  let hasError = false;
+  Object.keys(FIELD_ERROR_IDS).forEach(function (fieldKey) {
+    const message = errors[fieldKey] || "";
+    if (message) {
+      hasError = true;
+    }
+    setFieldError(fieldKey, message);
+  });
+  return hasError;
+}
+
+function validateAndRenderField(fieldKey) {
+  const values = collectFormValues();
+  const errors = validateFormFields(values);
+  setFieldError(fieldKey, errors[fieldKey] || "");
+  return !errors[fieldKey];
+}
+
+function mapServerErrorToField(rawMessage) {
+  const firstMessage = String(rawMessage || "").split("|")[0].trim();
+  const lowered = firstMessage.toLowerCase();
+
+  const prefixedMappings = [
+    { prefix: "title:", field: "title" },
+    { prefix: "slug:", field: "slug" },
+    { prefix: "shortdescription:", field: "shortDescription" },
+    { prefix: "description:", field: "description" },
+    { prefix: "authorname:", field: "authorName" },
+    { prefix: "featuredimage:", field: "featuredImage" },
+    { prefix: "galleryimages", field: "galleryImages" },
+    { prefix: "authorid:", field: "authorName" }
+  ];
+
+  for (let index = 0; index < prefixedMappings.length; index += 1) {
+    const item = prefixedMappings[index];
+    if (lowered.startsWith(item.prefix)) {
+      return {
+        field: item.field,
+        message: firstMessage.slice(item.prefix.length).trim() || firstMessage
+      };
+    }
+  }
+
+  if (lowered.includes("category")) {
+    return { field: "categoryIds", message: firstMessage };
+  }
+  if (lowered.includes("tag")) {
+    return { field: "tagIds", message: firstMessage };
+  }
+  if (lowered.includes("gallery")) {
+    return { field: "galleryImages", message: firstMessage };
+  }
+
+  return null;
+}
+
+async function graphQLJsonRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({ query: query, variables: variables || {} })
+  });
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+  return payload.data;
+}
+
+async function graphQLMultipartRequest(query, variables, uploadEntries) {
+  const formData = new FormData();
+  const operations = {
+    query: query,
+    variables: variables || {}
+  };
+
+  formData.append("operations", JSON.stringify(operations));
+
+  const map = {};
+  uploadEntries.forEach(function (entry, index) {
+    map[String(index)] = [entry.path];
+  });
+  formData.append("map", JSON.stringify(map));
+
+  uploadEntries.forEach(function (entry, index) {
+    formData.append(String(index), entry.file);
+  });
+
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    credentials: "include",
+    body: formData
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+
+  return payload.data;
+}
+
+function enableClickMultiSelect(selectId) {
+  const selectElement = document.getElementById(selectId);
+  if (!selectElement) {
+    return;
+  }
+  selectElement.addEventListener("mousedown", function (event) {
+    const option = event.target;
+    if (option.tagName !== "OPTION") {
+      return;
+    }
+    event.preventDefault();
+    option.selected = !option.selected;
+    selectElement.dispatchEvent(new Event("change"));
+  });
+}
+
+function populateSelectOptions(selectId, items, selectedIds) {
+  const selectElement = document.getElementById(selectId);
+  if (!selectElement) {
+    return;
+  }
+
+  const selectedSet = new Set((selectedIds || []).map(function (value) { return String(value); }));
+  selectElement.innerHTML = (items || []).map(function (item) {
+    const selectedAttr = selectedSet.has(String(item.id)) ? " selected" : "";
+    return "<option value='" + item.id + "'" + selectedAttr + ">" + escapeHtml(item.name) + "</option>";
+  }).join("");
+}
+
+function getSelectedValues(selectId) {
+  const selectElement = document.getElementById(selectId);
+  if (!selectElement) {
+    return [];
+  }
+  return Array.from(selectElement.selectedOptions).map(function (option) {
+    return option.value;
+  });
+}
+
+function buildFileKey(file) {
+  return [file.name, file.size, file.lastModified].join("::");
+}
+
+function renderFeaturedPreviewFromUrl(url) {
+  if (!url) {
+    featuredPreview.style.display = "none";
+    featuredPreviewImg.src = "";
+    return;
+  }
+  featuredPreviewImg.src = url;
+  featuredPreview.style.display = "block";
+}
+
+function renderNewGalleryPreview() {
+  galleryPreview.innerHTML = "";
+  newGalleryFiles.forEach(function (file, index) {
+    const reader = new FileReader();
+    reader.onload = function (event) {
+      const wrapper = document.createElement("div");
+      wrapper.style.position = "relative";
+      wrapper.style.width = "130px";
+      wrapper.style.height = "90px";
+
+      const image = document.createElement("img");
+      image.src = event.target.result;
+      image.alt = "Gallery preview";
+      image.style.width = "130px";
+      image.style.height = "90px";
+      image.style.objectFit = "cover";
+      image.style.border = "1px solid #d1d5db";
+      image.style.borderRadius = "6px";
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.textContent = "x";
+      removeButton.style.position = "absolute";
+      removeButton.style.top = "4px";
+      removeButton.style.right = "4px";
+      removeButton.style.background = "#dc2626";
+      removeButton.style.color = "#fff";
+      removeButton.style.border = "none";
+      removeButton.style.borderRadius = "999px";
+      removeButton.style.width = "22px";
+      removeButton.style.height = "22px";
+      removeButton.style.lineHeight = "22px";
+      removeButton.style.cursor = "pointer";
+      removeButton.addEventListener("click", function () {
+        newGalleryFiles.splice(index, 1);
+        renderNewGalleryPreview();
+        validateAndRenderField("galleryImages");
+      });
+
+      wrapper.appendChild(image);
+      wrapper.appendChild(removeButton);
+      galleryPreview.appendChild(wrapper);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderExistingGallery(galleryItems) {
+  if (!isEditBlogPage || !galleryItems.length) {
+    existingGallerySection.style.display = "none";
+    existingGalleryPreview.innerHTML = "";
+    return;
+  }
+
+  existingGallerySection.style.display = "block";
+  existingGalleryPreview.innerHTML = galleryItems.map(function (item) {
+    return ""
+      + "<div class='existing-gallery-item' data-image-id='" + item.id + "' style='position:relative; width:120px; height:80px;'>"
+      + "<img class='thumb' src='" + item.image + "' alt='Existing gallery image' style='width:100%; height:100%;' />"
+      + "<button type='button' class='remove-existing-gallery' data-image-id='" + item.id + "' style='position:absolute; top:4px; right:4px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:22px; height:22px; line-height:22px; cursor:pointer;'>x</button>"
+      + "</div>";
+  }).join("");
+
+  const buttons = existingGalleryPreview.querySelectorAll(".remove-existing-gallery");
+  buttons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      const imageId = button.getAttribute("data-image-id");
+      keptGalleryIds = keptGalleryIds.filter(function (item) {
+        return String(item) !== String(imageId);
+      });
+      const tile = existingGalleryPreview.querySelector(".existing-gallery-item[data-image-id='" + imageId + "']");
+      if (tile) {
+        tile.style.display = "none";
       }
-      return new File([bytes], fileName || 'upload', {
-        type: mimeType || 'application/octet-stream',
-        lastModified: lastModified || Date.now()
-      });
-    }
+    });
+  });
+}
 
-    function saveFeaturedSelection(file) {
-      if (!file) {
-        sessionStorage.removeItem(featuredStorageKey);
-        return Promise.resolve();
+function initializeEditor() {
+  if (typeof ClassicEditor === "undefined" || !descriptionEditorElement) {
+    return;
+  }
+
+  ClassicEditor
+    .create(descriptionEditorElement, {
+      ckfinder: {
+        uploadUrl: "{% url 'admin_dashboard:ckeditor_upload' %}"
+      },
+      toolbar: [
+        "undo", "redo", "|",
+        "heading", "|",
+        "bold", "italic", "link", "|",
+        "bulletedList", "numberedList", "|",
+        "insertTable", "uploadImage", "blockQuote"
+      ],
+      image: {
+        toolbar: ["imageTextAlternative", "imageStyle:inline", "imageStyle:block", "imageStyle:side"]
       }
-      return fileToDataUrl(file)
-        .then(function (dataUrl) {
-          sessionStorage.setItem(featuredStorageKey, JSON.stringify({
-            name: file.name,
-            type: file.type,
-            lastModified: file.lastModified,
-            dataUrl: dataUrl
-          }));
-        })
-        .catch(function () {});
-    }
-
-    function buildFileKey(file) {
-      return [file.name, file.size, file.lastModified].join('::');
-    }
-
-    function syncGalleryInputFiles() {
-      const dataTransfer = new DataTransfer();
-      for (let i = 0; i < gallerySelectedFiles.length; i += 1) {
-        dataTransfer.items.add(gallerySelectedFiles[i]);
+    })
+    .then(function (editor) {
+      descriptionEditorInstance = editor;
+      if (pendingDescriptionValue) {
+        editor.setData(pendingDescriptionValue);
       }
-      galleryInput.files = dataTransfer.files;
+      editor.model.document.on("change:data", function () {
+        validateAndRenderField("description");
+      });
+    })
+    .catch(function () {});
+}
+
+async function loadInitialFormData() {
+  setBlogFormError("");
+
+  try {
+    if (isEditBlogPage) {
+      const blogId = getCurrentBlogId();
+      if (!blogId) {
+        throw new Error("Blog ID is missing in URL.");
+      }
+
+      const data = await graphQLJsonRequest(
+        "query BlogEditData($id: ID!) {"
+        + " adminCategories(isActive: true) { id name }"
+        + " adminTags(isActive: true) { id name }"
+        + " adminBlog(id: $id) {"
+        + " id title slug shortDescription description isActive featuredImage"
+        + " author { username }"
+        + " categories { id }"
+        + " tags { id }"
+        + " gallery { id image }"
+        + " }"
+        + " }",
+        { id: blogId }
+      );
+
+      const blog = data.adminBlog;
+      if (!blog) {
+        throw new Error("Blog not found.");
+      }
+
+      populateSelectOptions("category_ids", data.adminCategories || [], (blog.categories || []).map(function (item) { return item.id; }));
+      populateSelectOptions("tag_ids", data.adminTags || [], (blog.tags || []).map(function (item) { return item.id; }));
+
+      document.getElementById("title").value = blog.title || "";
+      document.getElementById("slug").value = blog.slug || "";
+      document.getElementById("short_description").value = blog.shortDescription || "";
+      setDescriptionValue(blog.description || "");
+      document.getElementById("author_name").value = authorName(blog.author);
+      document.getElementById("is_active").checked = Boolean(blog.isActive);
+
+      existingFeaturedImageUrl = blog.featuredImage || "";
+      renderFeaturedPreviewFromUrl(existingFeaturedImageUrl);
+      document.getElementById("featuredHelp").textContent = "Upload a new image only if you want to replace current featured image";
+
+      const galleryItems = blog.gallery || [];
+      keptGalleryIds = galleryItems.map(function (item) { return String(item.id); });
+      renderExistingGallery(galleryItems);
+    } else {
+      const data = await graphQLJsonRequest(
+        "query BlogCreateData {"
+        + " adminCategories(isActive: true) { id name }"
+        + " adminTags(isActive: true) { id name }"
+        + " }"
+      );
+      populateSelectOptions("category_ids", data.adminCategories || [], []);
+      populateSelectOptions("tag_ids", data.adminTags || [], []);
+      document.getElementById("is_active").checked = true;
+      featuredInput.required = true;
+    }
+  } catch (error) {
+    setBlogFormError(error.message || "Failed to load form data.");
+  }
+}
+
+featuredInput.addEventListener("change", function () {
+  const file = featuredInput.files && featuredInput.files[0];
+  if (!file) {
+    if (!isEditBlogPage) {
+      setFieldError("featuredImage", "Featured image is required.");
+    } else {
+      setFieldError("featuredImage", "");
+    }
+    renderFeaturedPreviewFromUrl(existingFeaturedImageUrl);
+    return;
+  }
+
+  const imageError = validateImageFile(file);
+  if (imageError) {
+    setFieldError("featuredImage", imageError);
+    featuredInput.value = "";
+    renderFeaturedPreviewFromUrl(existingFeaturedImageUrl);
+    return;
+  }
+
+  setFieldError("featuredImage", "");
+
+  const reader = new FileReader();
+  reader.onload = function (event) {
+    renderFeaturedPreviewFromUrl(event.target.result);
+  };
+  reader.readAsDataURL(file);
+});
+
+removeFeaturedButton.addEventListener("click", function () {
+  if (!featuredInput.files || !featuredInput.files[0]) {
+    if (isEditBlogPage && existingFeaturedImageUrl) {
+      setFieldError("featuredImage", "Existing featured image cannot be removed here. Upload a new image to replace it.");
+      return;
+    }
+    if (!isEditBlogPage) {
+      setFieldError("featuredImage", "Featured image is required.");
+    }
+    renderFeaturedPreviewFromUrl("");
+    return;
+  }
+
+  featuredInput.value = "";
+  renderFeaturedPreviewFromUrl(existingFeaturedImageUrl);
+  validateAndRenderField("featuredImage");
+});
+
+galleryInput.addEventListener("change", function () {
+  const selected = Array.from(galleryInput.files || []);
+  const existingKeys = new Set(newGalleryFiles.map(buildFileKey));
+  const invalidMessages = [];
+
+  selected.forEach(function (file) {
+    const fileError = validateImageFile(file);
+    if (fileError) {
+      invalidMessages.push(file.name + ": " + fileError);
+      return;
     }
 
-    function renderGalleryPreview() {
-      galleryPreview.innerHTML = '';
-      for (let i = 0; i < gallerySelectedFiles.length; i += 1) {
-        const file = gallerySelectedFiles[i];
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          const wrapper = document.createElement('div');
-          wrapper.style.position = 'relative';
-          wrapper.style.width = '130px';
-          wrapper.style.height = '90px';
+    const key = buildFileKey(file);
+    if (!existingKeys.has(key)) {
+      newGalleryFiles.push(file);
+      existingKeys.add(key);
+    }
+  });
 
-          const img = document.createElement('img');
-          img.src = event.target.result;
-          img.alt = 'Gallery preview';
-          img.style.width = '130px';
-          img.style.height = '90px';
-          img.style.objectFit = 'cover';
-          img.style.border = '1px solid #d1d5db';
-          img.style.borderRadius = '6px';
+  if (invalidMessages.length) {
+    setFieldError("galleryImages", invalidMessages.join(" | "));
+  } else {
+    validateAndRenderField("galleryImages");
+  }
 
-          const removeButton = document.createElement('button');
-          removeButton.type = 'button';
-          removeButton.textContent = '×';
-          removeButton.style.position = 'absolute';
-          removeButton.style.top = '4px';
-          removeButton.style.right = '4px';
-          removeButton.style.background = '#dc2626';
-          removeButton.style.color = '#fff';
-          removeButton.style.border = 'none';
-          removeButton.style.borderRadius = '999px';
-          removeButton.style.width = '22px';
-          removeButton.style.height = '22px';
-          removeButton.style.lineHeight = '22px';
-          removeButton.style.fontSize = '14px';
-          removeButton.style.cursor = 'pointer';
-          removeButton.addEventListener('click', function () {
-            gallerySelectedFiles.splice(i, 1);
-            syncGalleryInputFiles();
-            renderGalleryPreview();
-          });
+  renderNewGalleryPreview();
+  galleryInput.value = "";
+});
 
-          wrapper.appendChild(img);
-          wrapper.appendChild(removeButton);
-          galleryPreview.appendChild(wrapper);
-        };
-        reader.readAsDataURL(file);
+function bindLiveValidation() {
+  document.getElementById("title").addEventListener("input", function () {
+    validateAndRenderField("title");
+  });
+  document.getElementById("slug").addEventListener("input", function () {
+    validateAndRenderField("slug");
+  });
+  document.getElementById("short_description").addEventListener("input", function () {
+    validateAndRenderField("shortDescription");
+  });
+  document.getElementById("author_name").addEventListener("input", function () {
+    validateAndRenderField("authorName");
+  });
+  document.getElementById("category_ids").addEventListener("change", function () {
+    validateAndRenderField("categoryIds");
+  });
+  document.getElementById("tag_ids").addEventListener("change", function () {
+    validateAndRenderField("tagIds");
+  });
+
+  if (descriptionEditorElement) {
+    descriptionEditorElement.addEventListener("input", function () {
+      validateAndRenderField("description");
+    });
+  }
+}
+
+blogForm.addEventListener("submit", async function (event) {
+  event.preventDefault();
+  setBlogFormError("");
+  clearAllFieldErrors();
+
+  const values = collectFormValues();
+  const hasValidationError = applyFieldErrors(validateFormFields(values));
+  if (hasValidationError) {
+    setBlogFormError("Please fix the highlighted errors.");
+    return;
+  }
+
+  submitButton.disabled = true;
+
+  try {
+    if (isEditBlogPage) {
+      const blogId = getCurrentBlogId();
+      if (!blogId) {
+        throw new Error("Blog ID is missing in URL.");
+      }
+
+      const mutation = "mutation UpdateBlog("
+        + "$id: ID!, $title: String!, $slug: String, $shortDescription: String!,"
+        + "$description: String!, $featuredImage: Upload, $categoryIds: [ID],"
+        + "$tagIds: [ID], $galleryIds: [ID], $galleryImages: [Upload],"
+        + "$isActive: Boolean, $authorName: String"
+        + ") {"
+        + " updateBlog("
+        + " id: $id, title: $title, slug: $slug, shortDescription: $shortDescription,"
+        + " description: $description, featuredImage: $featuredImage,"
+        + " categoryIds: $categoryIds, tagIds: $tagIds, galleryIds: $galleryIds,"
+        + " galleryImages: $galleryImages, isActive: $isActive, authorName: $authorName"
+        + " ) { blog { id } }"
+        + " }";
+
+      const variables = {
+        id: blogId,
+        title: values.title,
+        slug: values.slug || null,
+        shortDescription: values.shortDescription,
+        description: values.description,
+        featuredImage: null,
+        categoryIds: values.categoryIds,
+        tagIds: values.tagIds,
+        galleryIds: keptGalleryIds,
+        galleryImages: newGalleryFiles.length ? new Array(newGalleryFiles.length).fill(null) : [],
+        isActive: values.isActive,
+        authorName: values.authorName
+      };
+
+      const uploads = [];
+      if (values.featuredFile) {
+        uploads.push({ path: "variables.featuredImage", file: values.featuredFile });
+      }
+      newGalleryFiles.forEach(function (file, index) {
+        uploads.push({ path: "variables.galleryImages." + index, file: file });
+      });
+
+      const updateResponse = uploads.length
+        ? await graphQLMultipartRequest(mutation, variables, uploads)
+        : await graphQLJsonRequest(mutation, variables);
+
+      if (!updateResponse.updateBlog || !updateResponse.updateBlog.blog) {
+        throw new Error("Blog update failed.");
+      }
+    } else {
+      const mutation = "mutation CreateBlog("
+        + "$title: String!, $slug: String, $shortDescription: String!,"
+        + "$description: String!, $featuredImage: Upload!, $categoryIds: [ID]!,"
+        + "$tagIds: [ID]!, $galleryImages: [Upload], $isActive: Boolean, $authorName: String"
+        + ") {"
+        + " createBlog("
+        + " title: $title, slug: $slug, shortDescription: $shortDescription,"
+        + " description: $description, featuredImage: $featuredImage,"
+        + " categoryIds: $categoryIds, tagIds: $tagIds, galleryImages: $galleryImages,"
+        + " isActive: $isActive, authorName: $authorName"
+        + " ) { blog { id } }"
+        + " }";
+
+      const variables = {
+        title: values.title,
+        slug: values.slug || null,
+        shortDescription: values.shortDescription,
+        description: values.description,
+        featuredImage: null,
+        categoryIds: values.categoryIds,
+        tagIds: values.tagIds,
+        galleryImages: newGalleryFiles.length ? new Array(newGalleryFiles.length).fill(null) : [],
+        isActive: values.isActive,
+        authorName: values.authorName
+      };
+
+      const uploads = [
+        { path: "variables.featuredImage", file: values.featuredFile }
+      ];
+      newGalleryFiles.forEach(function (file, index) {
+        uploads.push({ path: "variables.galleryImages." + index, file: file });
+      });
+
+      const createResponse = await graphQLMultipartRequest(mutation, variables, uploads);
+      if (!createResponse.createBlog || !createResponse.createBlog.blog) {
+        throw new Error("Blog creation failed.");
       }
     }
 
-    function restoreFeaturedSelection() {
-      const raw = sessionStorage.getItem(featuredStorageKey);
-      if (!raw || !featuredInput) {
-        return;
-      }
-      try {
-        const payload = JSON.parse(raw);
-        const restoredFile = dataUrlToFile(payload.dataUrl, payload.name, payload.type, payload.lastModified);
-        if (!restoredFile) {
-          return;
-        }
-        const transfer = new DataTransfer();
-        transfer.items.add(restoredFile);
-        featuredInput.files = transfer.files;
-        featuredPreviewImg.src = payload.dataUrl;
-        featuredPreview.style.display = 'block';
-        if (deleteFeaturedInput) {
-          deleteFeaturedInput.value = '0';
-        }
-      } catch (error) {
-        sessionStorage.removeItem(featuredStorageKey);
-      }
+    try {
+      sessionStorage.setItem(
+        "dashboard_blog_success",
+        isEditBlogPage ? "Blog updated successfully." : "Blog created successfully."
+      );
+    } catch (storageError) {
     }
-
-    if (!hasErrorMessages()) {
-      sessionStorage.removeItem(featuredStorageKey);
+    window.location.href = "{% url 'admin_dashboard:dashboard_blogs' %}";
+  } catch (error) {
+    const errorMessage = error.message || "Failed to save blog.";
+    const mappedError = mapServerErrorToField(errorMessage);
+    if (mappedError) {
+      setFieldError(mappedError.field, mappedError.message);
+      setBlogFormError("Please fix the highlighted error and try again.");
+    } else {
+      setBlogFormError(errorMessage);
     }
+  } finally {
+    submitButton.disabled = false;
+  }
+});
 
-    if (blogForm) {
-      blogForm.addEventListener('submit', function (event) {
-        if (isSubmitting) {
-          return;
-        }
-        event.preventDefault();
-        if (descriptionEditorInstance && descriptionEditorElement) {
-          descriptionEditorElement.value = descriptionEditorInstance.getData();
-        }
-        const pendingSaves = [];
-        if (featuredInput && featuredInput.files && featuredInput.files[0]) {
-          pendingSaves.push(saveFeaturedSelection(featuredInput.files[0]));
-        }
-        isSubmitting = true;
-        Promise.all(pendingSaves)
-          .catch(function () {})
-          .finally(function () {
-            blogForm.submit();
-          });
-      });
-    }
-
-    if (featuredInput) {
-      featuredInput.addEventListener('change', function () {
-        const file = featuredInput.files && featuredInput.files[0];
-        if (!file) {
-          featuredPreview.style.display = 'none';
-          featuredPreviewImg.src = '';
-          if (deleteFeaturedInput && deleteFeaturedInput.value === '1') {
-            featuredInput.required = true;
-          }
-          saveFeaturedSelection(null);
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          featuredPreviewImg.src = event.target.result;
-          featuredPreview.style.display = 'block';
-          if (deleteFeaturedInput) {
-            deleteFeaturedInput.value = '0';
-          }
-          featuredInput.required = false;
-        };
-        reader.readAsDataURL(file);
-        saveFeaturedSelection(file);
-      });
-    }
-
-    if (removeFeaturedButton && featuredInput && featuredPreview && featuredPreviewImg) {
-      removeFeaturedButton.addEventListener('click', function () {
-        featuredInput.value = '';
-        featuredPreviewImg.src = '';
-        featuredPreview.style.display = 'none';
-        if (deleteFeaturedInput) {
-          deleteFeaturedInput.value = '1';
-        }
-        featuredInput.required = true;
-        saveFeaturedSelection(null);
-      });
-    }
-
-    if (galleryInput) {
-      galleryInput.addEventListener('change', function () {
-        const files = galleryInput.files || [];
-        const existingKeys = new Set(gallerySelectedFiles.map(buildFileKey));
-        for (let i = 0; i < files.length; i += 1) {
-          const file = files[i];
-          const key = buildFileKey(file);
-          if (!existingKeys.has(key)) {
-            gallerySelectedFiles.push(file);
-            existingKeys.add(key);
-          }
-        }
-
-        syncGalleryInputFiles();
-        renderGalleryPreview();
-      });
-    }
-
-    const removePendingButtons = document.querySelectorAll('.remove-pending-gallery');
-    const pendingInputsContainer = document.getElementById('pending_gallery_inputs');
-    const removedPendingInputsContainer = document.getElementById('removed_pending_gallery_inputs');
-    if (removePendingButtons.length && pendingInputsContainer && removedPendingInputsContainer) {
-      removePendingButtons.forEach(function (button) {
-        button.addEventListener('click', function () {
-          const imageId = button.getAttribute('data-image-id');
-          const pendingItem = document.querySelector('.pending-gallery-item[data-image-id="' + imageId + '"]');
-          if (pendingItem) {
-            pendingItem.style.display = 'none';
-          }
-          const existingPendingInput = pendingInputsContainer.querySelector('input[value="' + imageId + '"]');
-          if (existingPendingInput) {
-            existingPendingInput.remove();
-          }
-          const existingRemoveInput = removedPendingInputsContainer.querySelector('input[value="' + imageId + '"]');
-          if (!existingRemoveInput) {
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.name = 'remove_pending_gallery_image_ids';
-            hiddenInput.value = imageId;
-            removedPendingInputsContainer.appendChild(hiddenInput);
-          }
-        });
-      });
-    }
-
-    const removeExistingButtons = document.querySelectorAll('.remove-existing-gallery');
-    const removedInputsContainer = document.getElementById('removed_gallery_inputs');
-    if (removeExistingButtons.length && removedInputsContainer) {
-      removeExistingButtons.forEach(function (button) {
-        button.addEventListener('click', function () {
-          const imageId = button.getAttribute('data-image-id');
-          const existingItem = document.querySelector('.existing-gallery-item[data-image-id="' + imageId + '"]');
-          if (existingItem) {
-            existingItem.style.display = 'none';
-          }
-          const existingInput = removedInputsContainer.querySelector('input[value="' + imageId + '"]');
-          if (!existingInput) {
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.name = 'remove_gallery_image_ids';
-            hiddenInput.value = imageId;
-            removedInputsContainer.appendChild(hiddenInput);
-          }
-        });
-      });
-    }
-
-    function enableClickMultiSelect(selectElementId) {
-      const selectElement = document.getElementById(selectElementId);
-      if (!selectElement) {
-        return;
-      }
-      selectElement.addEventListener('mousedown', function (event) {
-        const option = event.target;
-        if (option.tagName !== 'OPTION') {
-          return;
-        }
-        event.preventDefault();
-        option.selected = !option.selected;
-      });
-    }
-
-    enableClickMultiSelect('category_ids');
-    enableClickMultiSelect('tag_ids');
-    restoreFeaturedSelection();
-  })();
+enableClickMultiSelect("category_ids");
+enableClickMultiSelect("tag_ids");
+bindLiveValidation();
+initializeEditor();
+loadInitialFormData();
 </script>
 {% endblock %}

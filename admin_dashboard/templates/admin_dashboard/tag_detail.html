@@ -8,12 +8,14 @@
   <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_tags' %}">Back to Tags</a>
 </div>
 
+<div id="tagDetailError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
 <div class="panel" style="padding:16px; margin-bottom:14px;">
-  <p><strong>Name:</strong> {{ tag.name }}</p>
-  <p><strong>Slug:</strong> {{ tag.slug|default:'-' }}</p>
-  <p><strong>Status:</strong> {% if tag.is_active %}Active{% else %}Inactive{% endif %}</p>
-  <p><strong>Created:</strong> {{ tag.created_at|date:'d M Y, h:i A' }}</p>
-  <p><strong>Updated:</strong> {{ tag.updated_at|date:'d M Y, h:i A' }}</p>
+  <p><strong>Name:</strong> <span id="tagName">-</span></p>
+  <p><strong>Slug:</strong> <span id="tagSlug">-</span></p>
+  <p><strong>Status:</strong> <span id="tagStatus">-</span></p>
+  <p><strong>Created:</strong> <span id="tagCreated">-</span></p>
+  <p><strong>Updated:</strong> <span id="tagUpdated">-</span></p>
 </div>
 
 <div class="panel">
@@ -26,18 +28,157 @@
         <th>Status</th>
       </tr>
     </thead>
-    <tbody>
-      {% for blog in related_blogs %}
-      <tr>
-        <td>{{ forloop.counter }}</td>
-        <td><a class="link-btn" href="{% url 'admin_dashboard:dashboard_blog_detail' blog.id %}">{{ blog.title }}</a></td>
-        <td>{{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</td>
-        <td>{% if blog.is_active %}Active{% else %}Inactive{% endif %}</td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="4" class="muted">No blogs linked to this tag.</td></tr>
-      {% endfor %}
+    <tbody id="tagBlogRows">
+      <tr><td colspan="4" class="muted">Loading...</td></tr>
     </tbody>
   </table>
 </div>
+
+<div id="tagDetailConfig" data-tag-id="{% if tag %}{{ tag.id }}{% endif %}"></div>
+
+<script>
+const tagDetailConfig = document.getElementById("tagDetailConfig");
+const initialTagDetailId = tagDetailConfig && tagDetailConfig.dataset.tagId ? tagDetailConfig.dataset.tagId : null;
+
+function parseTagIdFromPath() {
+  const match = window.location.pathname.match(/\/tags\/(\d+)\//);
+  return match ? match[1] : null;
+}
+
+function currentTagId() {
+  return initialTagDetailId || parseTagIdFromPath();
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return parsed.toLocaleString();
+}
+
+function authorName(author) {
+  if (!author) {
+    return "Unknown";
+  }
+  const username = (author.username || "").trim();
+  const cleanedUsername = username.replace(/_[0-9]+$/, "");
+  return cleanedUsername || username || "Unknown";
+}
+
+function setTagDetailError(message) {
+  const errorBox = document.getElementById("tagDetailError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+async function graphQLRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({ query: query, variables: variables || {} })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+
+  return payload.data;
+}
+
+function renderRelatedBlogs(blogs) {
+  const rows = document.getElementById("tagBlogRows");
+  if (!rows) {
+    return;
+  }
+
+  if (!blogs.length) {
+    rows.innerHTML = "<tr><td colspan='4' class='muted'>No blogs linked to this tag.</td></tr>";
+    return;
+  }
+
+  rows.innerHTML = blogs.map(function (blog, index) {
+    const statusText = blog.isActive ? "Active" : "Inactive";
+    return ""
+      + "<tr>"
+      + "<td>" + (index + 1) + "</td>"
+      + "<td><a class='link-btn' href='/admin-dashboard/dashboard/blogs/" + blog.id + "/'>" + escapeHtml(blog.title || "-") + "</a></td>"
+      + "<td>" + escapeHtml(authorName(blog.author)) + "</td>"
+      + "<td>" + statusText + "</td>"
+      + "</tr>";
+  }).join("");
+}
+
+async function loadTagDetail() {
+  setTagDetailError("");
+  const selectedTagId = currentTagId();
+  if (!selectedTagId) {
+    setTagDetailError("Tag ID is missing in URL.");
+    return;
+  }
+
+  try {
+    const data = await graphQLRequest(
+      "query TagDetailData {"
+      + " adminTags { id name slug isActive createdAt updatedAt }"
+      + " adminBlogs { id title isActive author { username } tags { id } }"
+      + " }"
+    );
+
+    const tag = (data.adminTags || []).find(function (item) {
+      return String(item.id) === String(selectedTagId);
+    });
+    if (!tag) {
+      throw new Error("Tag not found.");
+    }
+
+    document.getElementById("tagName").textContent = tag.name || "-";
+    document.getElementById("tagSlug").textContent = tag.slug || "-";
+    document.getElementById("tagStatus").textContent = tag.isActive ? "Active" : "Inactive";
+    document.getElementById("tagCreated").textContent = formatDate(tag.createdAt);
+    document.getElementById("tagUpdated").textContent = formatDate(tag.updatedAt);
+
+    const relatedBlogs = (data.adminBlogs || []).filter(function (blog) {
+      const tagIds = (blog.tags || []).map(function (tagItem) { return String(tagItem.id); });
+      return tagIds.includes(String(selectedTagId));
+    });
+    renderRelatedBlogs(relatedBlogs);
+  } catch (error) {
+    setTagDetailError(error.message || "Failed to load tag detail.");
+    const rows = document.getElementById("tagBlogRows");
+    if (rows) {
+      rows.innerHTML = "<tr><td colspan='4' class='muted'>Unable to load related blogs.</td></tr>";
+    }
+  }
+}
+
+loadTagDetail();
+</script>
 {% endblock %}

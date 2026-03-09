@@ -8,24 +8,344 @@
   <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_categories' %}">Back</a>
 </div>
 
+<div id="categoryFormError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
+<style>
+  .field-error {
+    display: none;
+    margin-top: 6px;
+    color: #b91c1c;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+</style>
+
 <div class="panel" style="padding:16px;">
-  <form method="post">
-    {% csrf_token %}
+  <form id="categoryForm" novalidate>
+
     <div class="field">
       <label>Category Name</label>
-      <input type="text" name="name" required maxlength="100" value="{% if form_values %}{{ form_values.name|default:'' }}{% elif category %}{{ category.name }}{% endif %}" />
+      <input type="text" id="categoryName" name="name" required maxlength="100" />
+      <div id="categoryNameError" class="field-error"></div>
     </div>
+
     <div class="field">
       <label>Slug</label>
-      <input type="text" name="slug" maxlength="150" value="{% if form_values %}{{ form_values.slug|default:'' }}{% elif category and category.slug %}{{ category.slug }}{% endif %}" />
+      <input type="text" id="categorySlug" name="slug" maxlength="150" />
       <div class="muted">Leave blank to auto-generate from category name</div>
+      <div id="categorySlugError" class="field-error"></div>
     </div>
+
     <div class="field">
-      <label><input type="checkbox" name="is_active" {% if form_values %}{% if form_values.is_active %}checked{% endif %}{% elif category %}{% if category.is_active %}checked{% endif %}{% else %}checked{% endif %} /> Active</label>
+      <label>
+        <input type="checkbox" id="categoryIsActive" name="is_active" checked />
+        Active
+      </label>
     </div>
+
     <div class="actions">
-      <button class="btn" type="submit">{% if is_edit %}Update Category{% else %}Create Category{% endif %}</button>
+      <button class="btn" type="submit">
+        {% if is_edit %}Update Category{% else %}Create Category{% endif %}
+      </button>
     </div>
+
   </form>
+
 </div>
+
+<div
+  id="categoryPageConfig"
+  data-is-edit="{% if is_edit %}true{% else %}false{% endif %}"
+  data-category-id="{% if category %}{{ category.id }}{% endif %}"
+></div>
+
+<script>
+const categoryPageConfig = document.getElementById("categoryPageConfig");
+const isEditCategoryPage = Boolean(categoryPageConfig && categoryPageConfig.dataset.isEdit === "true");
+const initialCategoryId = categoryPageConfig && categoryPageConfig.dataset.categoryId ? categoryPageConfig.dataset.categoryId : null;
+const DOUBLE_SPACE_PATTERN = /(?<=\S) {2,}(?=\S)/;
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const CATEGORY_NAME_MAX_LENGTH = 100;
+const CATEGORY_SLUG_MAX_LENGTH = 150;
+
+const CATEGORY_FIELD_ERROR_IDS = {
+  name: "categoryNameError",
+  slug: "categorySlugError"
+};
+
+function parseCategoryIdFromPath() {
+  const match = window.location.pathname.match(/\/categories\/(\d+)\//);
+  return match ? match[1] : null;
+}
+
+function getCurrentCategoryId() {
+  return initialCategoryId || parseCategoryIdFromPath();
+}
+
+function setCategoryFormError(message) {
+  const errorBox = document.getElementById("categoryFormError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+function setCategoryFieldError(fieldKey, message) {
+  const errorElement = document.getElementById(CATEGORY_FIELD_ERROR_IDS[fieldKey] || "");
+  if (!errorElement) {
+    return;
+  }
+  if (!message) {
+    errorElement.style.display = "none";
+    errorElement.textContent = "";
+    return;
+  }
+  errorElement.style.display = "block";
+  errorElement.textContent = message;
+}
+
+function clearCategoryFieldErrors() {
+  Object.keys(CATEGORY_FIELD_ERROR_IDS).forEach(function (key) {
+    setCategoryFieldError(key, "");
+  });
+}
+
+function collectCategoryValues() {
+  const nameRaw = document.getElementById("categoryName").value || "";
+  const slugRaw = document.getElementById("categorySlug").value || "";
+
+  return {
+    nameRaw: nameRaw,
+    slugRaw: slugRaw,
+    name: nameRaw.trim(),
+    slug: slugRaw.trim(),
+    isActive: document.getElementById("categoryIsActive").checked
+  };
+}
+
+function validateCategoryValues(values) {
+  const errors = {
+    name: "",
+    slug: ""
+  };
+
+  if (!values.name) {
+    errors.name = "Category name is required.";
+  } else if (values.nameRaw !== values.name) {
+    errors.name = "Category name cannot have leading or trailing spaces.";
+  } else if (DOUBLE_SPACE_PATTERN.test(values.name)) {
+    errors.name = "Category name cannot contain multiple spaces between words.";
+  } else if (values.name.length > CATEGORY_NAME_MAX_LENGTH) {
+    errors.name = "Category name must be 100 characters or fewer.";
+  }
+
+  if (values.slug) {
+    if (values.slugRaw !== values.slug) {
+      errors.slug = "Slug cannot have leading or trailing spaces.";
+    } else if (DOUBLE_SPACE_PATTERN.test(values.slug)) {
+      errors.slug = "Slug cannot contain multiple spaces between words.";
+    } else if (values.slug.length > CATEGORY_SLUG_MAX_LENGTH) {
+      errors.slug = "Slug must be 150 characters or fewer.";
+    } else if (!SLUG_PATTERN.test(values.slug)) {
+      errors.slug = "Slug must contain lowercase letters, numbers, and hyphens only.";
+    }
+  }
+
+  return errors;
+}
+
+function applyCategoryFieldErrors(errors) {
+  let hasError = false;
+  Object.keys(CATEGORY_FIELD_ERROR_IDS).forEach(function (key) {
+    const message = errors[key] || "";
+    if (message) {
+      hasError = true;
+    }
+    setCategoryFieldError(key, message);
+  });
+  return hasError;
+}
+
+function validateAndRenderCategoryField(fieldKey) {
+  const values = collectCategoryValues();
+  const errors = validateCategoryValues(values);
+  setCategoryFieldError(fieldKey, errors[fieldKey] || "");
+  return !errors[fieldKey];
+}
+
+function mapCategoryServerErrorToField(rawMessage) {
+  const firstMessage = String(rawMessage || "").split("|")[0].trim();
+  const lowered = firstMessage.toLowerCase();
+
+  if (lowered.startsWith("name:")) {
+    return {
+      field: "name",
+      message: firstMessage.slice(5).trim() || firstMessage
+    };
+  }
+  if (lowered.startsWith("slug:")) {
+    return {
+      field: "slug",
+      message: firstMessage.slice(5).trim() || firstMessage
+    };
+  }
+
+  return null;
+}
+
+function bindCategoryLiveValidation() {
+  document.getElementById("categoryName").addEventListener("input", function () {
+    validateAndRenderCategoryField("name");
+  });
+  document.getElementById("categorySlug").addEventListener("input", function () {
+    validateAndRenderCategoryField("slug");
+  });
+}
+
+async function graphQLRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      query: query,
+      variables: variables || {}
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+
+  return payload.data;
+}
+
+async function loadCategoryForEdit() {
+  if (!isEditCategoryPage) {
+    document.getElementById("categoryIsActive").checked = true;
+    return;
+  }
+
+  const categoryId = getCurrentCategoryId();
+  if (!categoryId) {
+    setCategoryFormError("Category ID is missing in URL.");
+    return;
+  }
+
+  try {
+    const data = await graphQLRequest(
+      "query AdminCategoriesForEdit {"
+      + " adminCategories { id name slug isActive }"
+      + " }"
+    );
+
+    const currentCategory = (data.adminCategories || []).find(function (item) {
+      return String(item.id) === String(categoryId);
+    });
+
+    if (!currentCategory) {
+      throw new Error("Category not found.");
+    }
+
+    document.getElementById("categoryName").value = currentCategory.name || "";
+    document.getElementById("categorySlug").value = currentCategory.slug || "";
+    document.getElementById("categoryIsActive").checked = Boolean(currentCategory.isActive);
+  } catch (error) {
+    setCategoryFormError(error.message || "Failed to load category details.");
+  }
+}
+
+document.getElementById("categoryForm").addEventListener("submit", async function (event) {
+
+    event.preventDefault();
+    setCategoryFormError("");
+    clearCategoryFieldErrors();
+
+    const values = collectCategoryValues();
+    const hasValidationError = applyCategoryFieldErrors(validateCategoryValues(values));
+    if (hasValidationError) {
+      setCategoryFormError("Please fix the highlighted errors.");
+      return;
+    }
+
+    const categoryId = getCurrentCategoryId();
+
+    try {
+      if (isEditCategoryPage) {
+        if (!categoryId) {
+          throw new Error("Category ID is missing in URL.");
+        }
+
+        const updateData = await graphQLRequest(
+          "mutation UpdateCategory($id: ID!, $name: String!, $slug: String, $isActive: Boolean) {"
+          + " updateCategory(id: $id, name: $name, slug: $slug, isActive: $isActive) {"
+          + " category { id }"
+          + " }"
+          + " }",
+          {
+            id: categoryId,
+            name: values.name,
+            slug: values.slug || null,
+            isActive: values.isActive
+          }
+        );
+
+        if (!updateData.updateCategory || !updateData.updateCategory.category) {
+          throw new Error("Category update failed.");
+        }
+      } else {
+        const createData = await graphQLRequest(
+          "mutation CreateCategory($name: String!, $slug: String, $isActive: Boolean) {"
+          + " createCategory(name: $name, slug: $slug, isActive: $isActive) {"
+          + " category { id }"
+          + " }"
+          + " }",
+          {
+            name: values.name,
+            slug: values.slug || null,
+            isActive: values.isActive
+          }
+        );
+
+        if (!createData.createCategory || !createData.createCategory.category) {
+          throw new Error("Category creation failed.");
+        }
+      }
+
+      try {
+        sessionStorage.setItem(
+          "dashboard_category_success",
+          isEditCategoryPage ? "Category updated successfully." : "Category created successfully."
+        );
+      } catch (storageError) {
+      }
+      window.location.href = "{% url 'admin_dashboard:dashboard_categories' %}";
+    } catch (error) {
+      const errorMessage = error.message || "Unable to save category.";
+      const mappedError = mapCategoryServerErrorToField(errorMessage);
+      if (mappedError) {
+        setCategoryFieldError(mappedError.field, mappedError.message);
+        setCategoryFormError("Please fix the highlighted error and try again.");
+      } else {
+        setCategoryFormError(errorMessage);
+      }
+    }
+});
+
+bindCategoryLiveValidation();
+loadCategoryForEdit();
+</script>
+
 {% endblock %}

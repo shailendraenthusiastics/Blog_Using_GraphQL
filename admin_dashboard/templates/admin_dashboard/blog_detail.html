@@ -8,42 +8,181 @@
   <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_blogs' %}">Back to Blogs</a>
 </div>
 
+<div id="blogDetailError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
 <div class="panel" style="padding:16px;">
-  {% if blog.featured_image %}
-    <img class="thumb" style="width:220px;height:140px;" src="{{ blog.featured_image.url }}" alt="{{ blog.title }}" />
-  {% else %}
-    <p><strong>Featured Image:</strong> -</p>
-  {% endif %}
-  <p><strong>Title:</strong> {{ blog.title|default:"-" }}</p>
-  <p><strong>Slug:</strong> {{ blog.slug|default:"-" }}</p>
-  <p><strong>Short Description:</strong> {{ blog.short_description|default:"-" }}</p>
-  <p><strong>Description:</strong> {{ blog.description|striptags|default:"-" }}</p>
-  <p><strong>Author:</strong> {{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</p>
-  <p><strong>View Count:</strong> {{ blog.view_count|default:0 }}</p>
-  <p><strong>Status:</strong> {% if blog.is_active %}Active{% else %}Inactive{% endif %}</p>
+  <div id="featuredImageWrapper" style="margin-bottom:10px; display:none;">
+    <img id="featuredImage" class="thumb" style="width:220px;height:140px;" src="" alt="Featured Image" />
+  </div>
+  <p><strong>Title:</strong> <span id="blogTitle">-</span></p>
+  <p><strong>Slug:</strong> <span id="blogSlug">-</span></p>
+  <p><strong>Short Description:</strong> <span id="blogShortDescription">-</span></p>
+  <p><strong>Description:</strong> <span id="blogDescription">-</span></p>
+  <p><strong>Author:</strong> <span id="blogAuthor">-</span></p>
+  <p><strong>View Count:</strong> <span id="blogViewCount">0</span></p>
+  <p><strong>Status:</strong> <span id="blogStatus">-</span></p>
+  <p><strong>Created:</strong> <span id="blogCreated">-</span></p>
+  <p><strong>Updated:</strong> <span id="blogUpdated">-</span></p>
   <p><strong>Gallery Images:</strong></p>
-  {% if blog.gallery.all %}
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
-      {% for image in blog.gallery.all %}
-        <img class="thumb" src="{{ image.image.url }}" alt="{{ blog.title }} gallery" />
-      {% endfor %}
-    </div>
-  {% else %}
-    <p>-</p>
-  {% endif %}
-  <p><strong>Categories:</strong>
-    {% for category in blog.categories.all %}
-      {{ category.name }}{% if not forloop.last %}, {% endif %}
-    {% empty %}
-      -
-    {% endfor %}
-  </p>
-  <p><strong>Tags:</strong>
-    {% for tag in blog.tags.all %}
-      {{ tag.name }}{% if not forloop.last %}, {% endif %}
-    {% empty %}
-      -
-    {% endfor %}
-  </p>
+  <div id="galleryImages" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;"></div>
+  <p><strong>Categories:</strong> <span id="blogCategories">-</span></p>
+  <p><strong>Tags:</strong> <span id="blogTags">-</span></p>
 </div>
+
+<div id="blogDetailConfig" data-blog-id="{% if blog %}{{ blog.id }}{% endif %}"></div>
+
+<script>
+const blogDetailConfig = document.getElementById("blogDetailConfig");
+const initialBlogDetailId = blogDetailConfig && blogDetailConfig.dataset.blogId ? blogDetailConfig.dataset.blogId : null;
+
+function parseBlogIdFromPath() {
+  const match = window.location.pathname.match(/\/blogs\/(\d+)\//);
+  return match ? match[1] : null;
+}
+
+function getBlogId() {
+  return initialBlogDetailId || parseBlogIdFromPath();
+}
+
+function stripHtml(value) {
+  if (!value) {
+    return "-";
+  }
+  const container = document.createElement("div");
+  container.innerHTML = value;
+  const text = (container.textContent || container.innerText || "").trim();
+  return text || "-";
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return parsed.toLocaleString();
+}
+
+function authorName(author) {
+  if (!author) {
+    return "Unknown";
+  }
+  const username = (author.username || "").trim();
+  const cleanedUsername = username.replace(/_[0-9]+$/, "");
+  return cleanedUsername || username || "Unknown";
+}
+
+function setBlogDetailError(message) {
+  const errorBox = document.getElementById("blogDetailError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+async function graphQLRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({ query: query, variables: variables || {} })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+  return payload.data;
+}
+
+function renderGallery(gallery) {
+  const wrapper = document.getElementById("galleryImages");
+  if (!wrapper) {
+    return;
+  }
+
+  if (!gallery || !gallery.length) {
+    wrapper.innerHTML = "<span class='muted'>-</span>";
+    return;
+  }
+
+  wrapper.innerHTML = gallery.map(function (item) {
+    return "<img class='thumb' src='" + item.image + "' alt='Gallery image' />";
+  }).join("");
+}
+
+async function loadBlogDetail() {
+  setBlogDetailError("");
+  const blogId = getBlogId();
+  if (!blogId) {
+    setBlogDetailError("Blog ID is missing in URL.");
+    return;
+  }
+
+  try {
+    const data = await graphQLRequest(
+      "query AdminBlogDetail($id: ID!) {"
+      + " adminBlog(id: $id) {"
+      + " id title slug shortDescription description viewCount isActive createdAt updatedAt"
+      + " featuredImage"
+      + " author { username  }"
+      + " categories { id name }"
+      + " tags { id name }"
+      + " gallery { id image }"
+      + " }"
+      + " }",
+      { id: blogId }
+    );
+
+    const blog = data.adminBlog;
+    if (!blog) {
+      throw new Error("Blog not found.");
+    }
+
+    const featuredWrapper = document.getElementById("featuredImageWrapper");
+    const featuredImage = document.getElementById("featuredImage");
+    if (blog.featuredImage) {
+      featuredImage.src = blog.featuredImage;
+      featuredWrapper.style.display = "block";
+    } else {
+      featuredWrapper.style.display = "none";
+    }
+
+    document.getElementById("blogTitle").textContent = blog.title || "-";
+    document.getElementById("blogSlug").textContent = blog.slug || "-";
+    document.getElementById("blogShortDescription").textContent = blog.shortDescription || "-";
+    document.getElementById("blogDescription").textContent = stripHtml(blog.description);
+    document.getElementById("blogAuthor").textContent = authorName(blog.author);
+    document.getElementById("blogViewCount").textContent = blog.viewCount || 0;
+    document.getElementById("blogStatus").textContent = blog.isActive ? "Active" : "Inactive";
+    document.getElementById("blogCreated").textContent = formatDate(blog.createdAt);
+    document.getElementById("blogUpdated").textContent = formatDate(blog.updatedAt);
+
+    const categoryNames = (blog.categories || []).map(function (item) { return item.name; });
+    const tagNames = (blog.tags || []).map(function (item) { return item.name; });
+
+    document.getElementById("blogCategories").textContent = categoryNames.length ? categoryNames.join(", ") : "-";
+    document.getElementById("blogTags").textContent = tagNames.length ? tagNames.join(", ") : "-";
+
+    renderGallery(blog.gallery || []);
+  } catch (error) {
+    setBlogDetailError(error.message || "Failed to load blog detail.");
+  }
+}
+
+loadBlogDetail();
+</script>
 {% endblock %}

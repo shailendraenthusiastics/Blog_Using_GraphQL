@@ -8,12 +8,15 @@
   <a class="btn" href="{% url 'admin_dashboard:dashboard_blog_add' %}">Add Blog</a>
 </div>
 
-<form method="get" class="filter-row">
+<div id="blogListSuccess" class="message success" style="display:none; margin-bottom:10px;"></div>
+<div id="blogListError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
+<form class="filter-row" onsubmit="return false;">
   <label for="status" style="font-size:22px;">Status</label>
-  <select id="status" name="status" onchange="this.form.submit()">
-    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
-    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
-    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+  <select id="status" name="status">
+    <option value="all">All</option>
+    <option value="active">Active</option>
+    <option value="inactive">Inactive</option>
   </select>
 </form>
 
@@ -23,7 +26,7 @@
       <tr>
         <th>S.No</th>
         <th>Title</th>
-        <th>Image</th>
+        <th>Featured</th>
         <th>Slug</th>
         <th>Author</th>
         <th>Created</th>
@@ -32,63 +35,282 @@
         <th>Action</th>
       </tr>
     </thead>
-    <tbody>
-      {% for blog in blogs %}
-      <tr>
-        <td>{{ serial_start|add:forloop.counter }}</td>
-        <td>{{ blog.title }}</td>
-        <td>
-          {% if blog.featured_image %}
-            <img class="thumb" src="{{ blog.featured_image.url }}" alt="{{ blog.title }}" />
-          {% else %}
-            <span class="muted">-</span>
-          {% endif %}
-        </td>
-        <td>{{ blog.slug }}</td>
-        <td>{{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</td>
-        <td>{{ blog.created_at|date:'d M Y, h:i A' }}</td>
-        <td>{{ blog.updated_at|date:'d M Y, h:i A' }}</td>
-        <td>
-          <span class="tag {% if blog.is_active %}active{% else %}inactive{% endif %}">
-            {% if blog.is_active %}Active{% else %}Inactive{% endif %}
-          </span>
-        </td>
-        <td>
-          <div class="action-row">
-            <a href="{% url 'admin_dashboard:blog_edit' blog.id %}" class="btn btn-sm btn-primary">Edit</a>
-            <form method="post" action="{% url 'admin_dashboard:blog_delete' blog.id %}">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this blog?')">Delete</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="9" class="muted">No blogs found.</td></tr>
-      {% endfor %}
+    <tbody id="blogTableRows">
+      <tr><td colspan="9" class="muted">Loading blogs...</td></tr>
     </tbody>
   </table>
 </div>
 
-{% if blogs.paginator.num_pages > 1 %}
-<div class="filter-links">
-  {% if blogs.has_previous %}
-    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ blogs.previous_page_number }}">Previous</a>
-  {% endif %}
+<div class="filter-links" id="blogPagination"></div>
 
-  {% for page_num in blogs.paginator.page_range %}
-    <a
-      class="chip-link {% if page_num == blogs.number %}active{% endif %}"
-      href="?status={{ status_filter }}&page={{ page_num }}"
-    >
-      {{ page_num }}
-    </a>
-  {% endfor %}
+<script>
+const BLOGS_PER_PAGE = 10;
+const BLOG_FETCH_LIMIT = 200;
+let allBlogs = [];
+let currentPage = 1;
 
-  {% if blogs.has_next %}
-    <a class="chip-link nav" href="?status={{ status_filter }}&page={{ blogs.next_page_number }}">Next</a>
-  {% endif %}
-</div>
-{% endif %}
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return parsed.toLocaleString();
+}
+
+function featuredImageUrl(blogId) {
+  return "/admin-dashboard/dashboard/blogs/" + encodeURIComponent(blogId) + "/featured-image/";
+}
+
+function authorName(author) {
+  if (!author) {
+    return "Unknown";
+  }
+  const username = (author.username || "").trim();
+  const cleanedUsername = username.replace(/_[0-9]+$/, "");
+  return cleanedUsername || username || "Unknown";
+}
+
+function setBlogError(message) {
+  const errorBox = document.getElementById("blogListError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+function showBlogSuccessMessage() {
+  let message = "";
+  try {
+    message = sessionStorage.getItem("dashboard_blog_success") || "";
+    if (message) {
+      sessionStorage.removeItem("dashboard_blog_success");
+    }
+  } catch (storageError) {
+    message = "";
+  }
+
+  const successBox = document.getElementById("blogListSuccess");
+  if (!successBox) {
+    return;
+  }
+
+  if (!message) {
+    setBlogSuccess("");
+    return;
+  }
+
+  setBlogSuccess(message);
+}
+
+function setBlogSuccess(message) {
+  const successBox = document.getElementById("blogListSuccess");
+  if (!successBox) {
+    return;
+  }
+
+  if (!message) {
+    successBox.style.display = "none";
+    successBox.textContent = "";
+    return;
+  }
+
+  successBox.style.display = "block";
+  successBox.textContent = message;
+}
+
+async function graphQLRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      query: query,
+      variables: variables || {}
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+  return payload.data;
+}
+
+function statusVariable() {
+  const status = document.getElementById("status").value;
+  if (status === "active") {
+    return true;
+  }
+  if (status === "inactive") {
+    return false;
+  }
+  return null;
+}
+
+function renderBlogPagination() {
+  const pagination = document.getElementById("blogPagination");
+  if (!pagination) {
+    return;
+  }
+  const totalPages = Math.ceil(allBlogs.length / BLOGS_PER_PAGE);
+  if (totalPages <= 1) {
+    pagination.innerHTML = "";
+    return;
+  }
+
+  let html = "";
+  if (currentPage > 1) {
+    html += "<button class='chip-link nav' type='button' onclick='goToBlogPage(" + (currentPage - 1) + ")'>Previous</button>";
+  }
+  for (let page = 1; page <= totalPages; page += 1) {
+    const activeClass = page === currentPage ? "active" : "";
+    html += "<button class='chip-link " + activeClass + "' type='button' onclick='goToBlogPage(" + page + ")'>" + page + "</button>";
+  }
+  if (currentPage < totalPages) {
+    html += "<button class='chip-link nav' type='button' onclick='goToBlogPage(" + (currentPage + 1) + ")'>Next</button>";
+  }
+
+  pagination.innerHTML = html;
+}
+
+function renderBlogs() {
+  const table = document.getElementById("blogTableRows");
+  if (!table) {
+    return;
+  }
+
+  if (!allBlogs.length) {
+    table.innerHTML = "<tr><td colspan='9' class='muted'>No blogs found.</td></tr>";
+    renderBlogPagination();
+    return;
+  }
+
+  const start = (currentPage - 1) * BLOGS_PER_PAGE;
+  const pageItems = allBlogs.slice(start, start + BLOGS_PER_PAGE);
+
+  table.innerHTML = pageItems.map(function (blog, index) {
+    const statusClass = blog.isActive ? "active" : "inactive";
+    const statusText = blog.isActive ? "Active" : "Inactive";
+    const safeTitle = escapeHtml(blog.title || "-");
+
+    return ""
+      + "<tr>"
+      + "<td>" + (start + index + 1) + "</td>"
+      + "<td><a class='link-btn' href='/admin-dashboard/dashboard/blogs/" + blog.id + "/'>" + safeTitle + "</a></td>"
+      + "<td><img class='thumb' src='" + featuredImageUrl(blog.id) + "' alt='Featured image for " + safeTitle + "' loading='lazy' decoding='async' /></td>"
+      + "<td>" + escapeHtml(blog.slug || "-") + "</td>"
+      + "<td>" + escapeHtml(authorName(blog.author)) + "</td>"
+      + "<td>" + escapeHtml(formatDate(blog.createdAt)) + "</td>"
+      + "<td>" + escapeHtml(formatDate(blog.updatedAt)) + "</td>"
+      + "<td><span class='tag " + statusClass + "'>" + statusText + "</span></td>"
+      + "<td><div class='action-row'>"
+      + "<a class='link-btn' href='/admin-dashboard/blogs/" + blog.id + "/edit/'>Edit</a>"
+      + "<button type='button' class='action-btn' onclick='deleteBlog(\"" + String(blog.id) + "\", " + (blog.isActive ? "true" : "false") + ")'>Delete</button>"
+      + "</div></td>"
+      + "</tr>";
+  }).join("");
+
+  renderBlogPagination();
+}
+
+function goToBlogPage(page) {
+  currentPage = page;
+  renderBlogs();
+}
+
+async function loadBlogs() {
+  setBlogError("");
+  const table = document.getElementById("blogTableRows");
+  if (table) {
+    table.innerHTML = "<tr><td colspan='9' class='muted'>Loading blogs...</td></tr>";
+  }
+
+  try {
+    const data = await graphQLRequest(
+      "query AdminBlogList($isActive: Boolean, $limit: Int) {"
+      + " adminBlogs(isActive: $isActive, limit: $limit) {"
+      + " id title slug isActive createdAt updatedAt"
+      + " author { username }"
+      + " }"
+      + " }",
+      { isActive: statusVariable(), limit: BLOG_FETCH_LIMIT }
+    );
+    allBlogs = data.adminBlogs || [];
+    currentPage = 1;
+    renderBlogs();
+  } catch (error) {
+    setBlogError(error.message || "Failed to load blogs.");
+    if (table) {
+      table.innerHTML = "<tr><td colspan='9' class='muted'>Unable to load blogs.</td></tr>";
+    }
+    const pagination = document.getElementById("blogPagination");
+    if (pagination) {
+      pagination.innerHTML = "";
+    }
+  }
+}
+
+async function deleteBlog(id, isActive) {
+  const isCurrentlyActive = Boolean(isActive);
+  const confirmationMessage = isCurrentlyActive
+    ? "This blog is active. Move it to inactive?"
+    : "This blog is inactive. Activate it again?";
+
+  if (!confirm(confirmationMessage)) {
+    return;
+  }
+
+  setBlogSuccess("");
+  setBlogError("");
+
+  try {
+    const data = await graphQLRequest(
+      "mutation DeleteBlog($id: ID!) {"
+      + " deleteBlog(id: $id) { ok }"
+      + " }",
+      { id: id }
+    );
+
+    if (!data.deleteBlog || !data.deleteBlog.ok) {
+      throw new Error("Delete operation was not successful.");
+    }
+
+    setBlogSuccess(isCurrentlyActive ? "Blog moved to inactive." : "Blog activated successfully.");
+
+    await loadBlogs();
+  } catch (error) {
+    setBlogError(error.message || "Failed to delete blog.");
+  }
+}
+
+document.getElementById("status").addEventListener("change", loadBlogs);
+showBlogSuccessMessage();
+loadBlogs();
+</script>
 {% endblock %}
+
+
+

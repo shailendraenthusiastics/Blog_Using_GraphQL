@@ -1,11 +1,12 @@
 import graphene
 import re
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import IntegrityError
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils.text import slugify
-from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from graphene_django import DjangoObjectType
+from graphene_file_upload.scalars import Upload
 from graphql import GraphQLError
 from graphql_auth import mutations as auth_mutations
 from graphql_jwt.exceptions import JSONWebTokenError, JSONWebTokenExpired
@@ -14,6 +15,28 @@ from graphql_jwt.utils import jwt_decode
 
 from GraphQL.models import Blog, BlogCategory, BlogImage, BlogTag
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+DASHBOARD_SINGLE_PAGE_URL = "/admin-dashboard/"
+
+
+def _validate_uploaded_image_file(image_file, label, required=False):
+    if not image_file:
+        if required:
+            raise GraphQLError(f"{label}: Image file is required.")
+        return
+
+    file_name = (getattr(image_file, "name", "") or "").lower()
+    if "." not in file_name:
+        raise GraphQLError(f"{label}: Only JPG and PNG files are allowed.")
+
+    extension = file_name.rsplit(".", 1)[1]
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        raise GraphQLError(f"{label}: Only JPG and PNG files are allowed.")
+
+    file_size = getattr(image_file, "size", None)
+    if file_size and file_size > MAX_IMAGE_SIZE_BYTES:
+        raise GraphQLError(f"{label}: File size must be 5 MB or less.")
 def _normalize_text(value):
     if isinstance(value, str):
         return value.strip()
@@ -60,6 +83,70 @@ def _ensure_slug_unique(slug, exclude_id=None):
     if queryset.exists():
         raise GraphQLError("slug: This slug already exists.")
 
+
+def _build_unique_term_slug(model_cls, source_value, exclude_id=None):
+    base_slug = slugify(source_value or "")
+    if not base_slug:
+        raise GraphQLError("slug: Slug could not be generated.")
+
+    slug = base_slug
+    counter = 1
+    queryset = model_cls.objects.all()
+    if exclude_id is not None:
+        queryset = queryset.exclude(pk=exclude_id)
+
+    while queryset.filter(slug=slug).exists():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+
+def _normalize_term_slug(slug, fallback_value, model_cls, exclude_id=None):
+    slug = _normalize_text(slug)
+    if slug:
+        _validate_no_outer_or_multiple_spaces(slug, "slug")
+        slug = slugify(slug)
+        if not slug:
+            raise GraphQLError("slug: Slug could not be generated.")
+        if not SLUG_PATTERN.match(slug):
+            raise GraphQLError(
+                "slug: Slug must contain only lowercase letters, numbers, and hyphens."
+            )
+        duplicate_query = model_cls.objects.filter(slug=slug)
+        if exclude_id is not None:
+            duplicate_query = duplicate_query.exclude(pk=exclude_id)
+        if duplicate_query.exists():
+            raise GraphQLError("slug: This slug already exists.")
+        return slug
+    return _build_unique_term_slug(model_cls, fallback_value, exclude_id=exclude_id)
+
+
+def _build_unique_username_from_name(author_name):
+    base_username = slugify(author_name or "").replace("-", "_")
+    if not base_username:
+        raise GraphQLError("authorName: Author name is invalid.")
+    return base_username
+
+
+def _get_or_create_author_from_name(author_name):
+    _validate_no_outer_or_multiple_spaces(author_name, "authorName")
+    normalized_name = _normalize_text(author_name)
+    if not normalized_name:
+        raise GraphQLError("authorName: Author name is required.")
+    if len(normalized_name) > 150:
+        raise GraphQLError("authorName: Author name must be 150 characters or fewer.")
+
+    user_model = get_user_model()
+    username = _build_unique_username_from_name(normalized_name)
+    existing_user = user_model.objects.filter(username__iexact=username).first()
+    if existing_user:
+        return existing_user
+
+    return user_model.objects.create_user(
+        username=username,
+        is_active=True,
+    )
+
 def _get_authenticated_user(info):
     user = info.context.user
     if user and user.is_authenticated:
@@ -94,10 +181,24 @@ def _ensure_blog_write_permission(user, blog):
 def _ensure_superuser(user, action_name):
     if not user.is_superuser:
         raise GraphQLError(f"Only superuser can {action_name}")
+
+
+def _root_query_field_name(info):
+    path = getattr(info, "path", None)
+    if not path:
+        return ""
+
+    root = path
+    while getattr(root, "prev", None) is not None:
+        root = root.prev
+
+    return str(getattr(root, "key", "") or "")
+
+
 class UserType(DjangoObjectType):
     class Meta:
         model = get_user_model()
-        fields = ("id", "username", "email")
+        fields = ("id", "username", "email", "first_name", "last_name")
 class BlogCategoryType(DjangoObjectType):
     class Meta:
         model = BlogCategory
@@ -114,6 +215,9 @@ class BlogImageType(DjangoObjectType):
         fields = "__all__"
 
     def resolve_image(self, info):
+        # Do not expose image URLs in list APIs to keep payload minimal.
+        if _root_query_field_name(info) in {"admin_blogs", "blogs"}:
+            return None
         if not self.image:
             return None
         request = getattr(info, "context", None)
@@ -126,12 +230,29 @@ class BlogType(DjangoObjectType):
         fields = "__all__"
 
     def resolve_featured_image(self, info):
+        # Do not expose image URLs in list APIs to keep payload minimal.
+        if _root_query_field_name(info) in {"admin_blogs", "blogs"}:
+            return None
         if not self.featured_image:
             return None
         request = getattr(info, "context", None)
         if request and hasattr(request, "build_absolute_uri"):
             return request.build_absolute_uri(self.featured_image.url)
         return self.featured_image.url
+
+
+class DashboardStatsType(graphene.ObjectType):
+    total_blogs = graphene.Int()
+    active_blogs = graphene.Int()
+    inactive_blogs = graphene.Int()
+    total_categories = graphene.Int()
+    active_categories = graphene.Int()
+    inactive_categories = graphene.Int()
+    total_tags = graphene.Int()
+    active_tags = graphene.Int()
+    inactive_tags = graphene.Int()
+
+
 class RegisterUser(graphene.Mutation):
     success = graphene.Boolean()
     errors = graphene.String()
@@ -151,23 +272,82 @@ class RegisterUser(graphene.Mutation):
         user = user_model.objects.create_user(username=username, email=email, password=password)
         return RegisterUser(success=True, user=user)
 
+
+class DashboardLogin(graphene.Mutation):
+    success = graphene.Boolean()
+    message = graphene.String()
+    next_url = graphene.String()
+    user = graphene.Field(UserType)
+
+    class Arguments:
+        username = graphene.String(required=True)
+        password = graphene.String(required=True)
+        next_url = graphene.String(required=False)
+
+    def mutate(self, info, username, password, next_url=None):
+        request = info.context
+
+        _validate_no_outer_or_multiple_spaces(username, "username")
+        username = _normalize_text(username)
+        if not username:
+            raise GraphQLError("username: Username is required.")
+
+        if password is None or password == "":
+            raise GraphQLError("password: Password is required.")
+
+        safe_next_url = _normalize_text(next_url) or DASHBOARD_SINGLE_PAGE_URL
+        if not url_has_allowed_host_and_scheme(safe_next_url, allowed_hosts={request.get_host()}):
+            safe_next_url = DASHBOARD_SINGLE_PAGE_URL
+        if safe_next_url in {"/admin-dashboard/", "/admin-dashboard/login/"}:
+            safe_next_url = DASHBOARD_SINGLE_PAGE_URL
+
+        user = authenticate(request, username=username, password=password)
+        if not user:
+            raise GraphQLError("Invalid username or password.")
+        if not user.is_superuser:
+            raise GraphQLError("Only superuser can access the dashboard.")
+
+        login(request, user)
+        return DashboardLogin(
+            success=True,
+            message="Login successful.",
+            next_url=safe_next_url,
+            user=user,
+        )
+
+
+class DashboardLogout(graphene.Mutation):
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    def mutate(self, info):
+        request = info.context
+        if request.user and request.user.is_authenticated:
+            logout(request)
+        return DashboardLogout(success=True, message="Logout successful.")
+
 class CreateCategory(graphene.Mutation):
     category = graphene.Field(BlogCategoryType)
 
     class Arguments:
         name = graphene.String(required=True)
+        slug = graphene.String(required=False)
         is_active = graphene.Boolean(required=False)
 
-    def mutate(self, info, name, is_active=True):
+    def mutate(self, info, name, slug=None, is_active=True):
         current_user = _get_authenticated_user(info)
         _ensure_superuser(current_user, "create category")
         _validate_no_outer_or_multiple_spaces(name, "name")
         name = _normalize_text(name)
         _validate_non_empty_name(name, "name")
         _ensure_unique_name(BlogCategory, name, "name")
+        slug = _normalize_term_slug(slug, name, BlogCategory)
         try:
-            category = BlogCategory.objects.create(name=name, is_active=is_active)
+            category = BlogCategory.objects.create(name=name, slug=slug, is_active=is_active)
         except IntegrityError as exc:
+            message = str(exc).lower()
+            if "slug" in message:
+                raise GraphQLError("slug: This slug already exists.") from exc
             raise GraphQLError(f"name: '{name}' already exists.") from exc
         return CreateCategory(category=category)
 
@@ -177,9 +357,10 @@ class UpdateCategory(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
         name = graphene.String(required=False)
+        slug = graphene.String(required=False)
         is_active = graphene.Boolean(required=False)
 
-    def mutate(self, info, id, name=None, is_active=None):
+    def mutate(self, info, id, name=None, slug=None, is_active=None):
         current_user = _get_authenticated_user(info)
         _ensure_superuser(current_user, "update category")
         try:
@@ -193,11 +374,29 @@ class UpdateCategory(graphene.Mutation):
             _validate_non_empty_name(name, "name")
             _ensure_unique_name(BlogCategory, name, "name", exclude_id=category.id)
             category.name = name
+        if slug is not None:
+            source_name = category.name
+            category.slug = _normalize_term_slug(
+                slug,
+                source_name,
+                BlogCategory,
+                exclude_id=category.id,
+            )
+        elif name is not None:
+            category.slug = _normalize_term_slug(
+                None,
+                category.name,
+                BlogCategory,
+                exclude_id=category.id,
+            )
         if is_active is not None:
             category.is_active = is_active
         try:
             category.save()
         except IntegrityError as exc:
+            message = str(exc).lower()
+            if "slug" in message:
+                raise GraphQLError("slug: This slug already exists.") from exc
             raise GraphQLError(f"name: '{category.name}' already exists.") from exc
         return UpdateCategory(category=category)
 class DeleteCategory(graphene.Mutation):
@@ -212,7 +411,7 @@ class DeleteCategory(graphene.Mutation):
         category = BlogCategory.objects.filter(pk=id).first()
         if not category:
             return DeleteCategory(success=False)
-        category.is_active = False
+        category.is_active = not category.is_active
         category.save(update_fields=["is_active", "updated_at"])
         return DeleteCategory(success=True)
 class CreateTag(graphene.Mutation):
@@ -220,18 +419,23 @@ class CreateTag(graphene.Mutation):
 
     class Arguments:
         name = graphene.String(required=True)
+        slug = graphene.String(required=False)
         is_active = graphene.Boolean(required=False)
 
-    def mutate(self, info, name, is_active=True):
+    def mutate(self, info, name, slug=None, is_active=True):
         current_user = _get_authenticated_user(info)
         _ensure_superuser(current_user, "create tag")
         _validate_no_outer_or_multiple_spaces(name, "name")
         name = _normalize_text(name)
         _validate_non_empty_name(name, "name")
         _ensure_unique_name(BlogTag, name, "name")
+        slug = _normalize_term_slug(slug, name, BlogTag)
         try:
-            tag = BlogTag.objects.create(name=name, is_active=is_active)
+            tag = BlogTag.objects.create(name=name, slug=slug, is_active=is_active)
         except IntegrityError as exc:
+            message = str(exc).lower()
+            if "slug" in message:
+                raise GraphQLError("slug: This slug already exists.") from exc
             raise GraphQLError(f"name: '{name}' already exists.") from exc
         return CreateTag(tag=tag)
 class UpdateTag(graphene.Mutation):
@@ -240,9 +444,10 @@ class UpdateTag(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
         name = graphene.String(required=False)
+        slug = graphene.String(required=False)
         is_active = graphene.Boolean(required=False)
 
-    def mutate(self, info, id, name=None, is_active=None):
+    def mutate(self, info, id, name=None, slug=None, is_active=None):
         current_user = _get_authenticated_user(info)
         _ensure_superuser(current_user, "update tag")
         try:
@@ -256,11 +461,29 @@ class UpdateTag(graphene.Mutation):
             _validate_non_empty_name(name, "name")
             _ensure_unique_name(BlogTag, name, "name", exclude_id=tag.id)
             tag.name = name
+        if slug is not None:
+            source_name = tag.name
+            tag.slug = _normalize_term_slug(
+                slug,
+                source_name,
+                BlogTag,
+                exclude_id=tag.id,
+            )
+        elif name is not None:
+            tag.slug = _normalize_term_slug(
+                None,
+                tag.name,
+                BlogTag,
+                exclude_id=tag.id,
+            )
         if is_active is not None:
             tag.is_active = is_active
         try:
             tag.save()
         except IntegrityError as exc:
+            message = str(exc).lower()
+            if "slug" in message:
+                raise GraphQLError("slug: This slug already exists.") from exc
             raise GraphQLError(f"name: '{tag.name}' already exists.") from exc
         return UpdateTag(tag=tag)
 class DeleteTag(graphene.Mutation):
@@ -275,7 +498,7 @@ class DeleteTag(graphene.Mutation):
         tag = BlogTag.objects.filter(pk=id).first()
         if not tag:
             return DeleteTag(success=False)
-        tag.is_active = False
+        tag.is_active = not tag.is_active
         tag.save(update_fields=["is_active", "updated_at"])
         return DeleteTag(success=True)
 class CreateBlog(graphene.Mutation):
@@ -286,12 +509,14 @@ class CreateBlog(graphene.Mutation):
         slug = graphene.String(required=False)
         short_description = graphene.String(required=True)
         description = graphene.String(required=True)
-        featured_image = graphene.String(required=True)
+        featured_image = Upload(required=True)
         category_ids = graphene.List(graphene.ID, required=True)
         tag_ids = graphene.List(graphene.ID, required=True)
         gallery_ids = graphene.List(graphene.ID, required=False)
+        gallery_images = graphene.List(Upload, required=False)
         is_active = graphene.Boolean(required=False)
         author_id = graphene.ID(required=False)
+        author_name = graphene.String(required=False)
 
     def mutate(
         self,
@@ -304,15 +529,19 @@ class CreateBlog(graphene.Mutation):
         tag_ids,
         slug=None,
         gallery_ids=None,
+        gallery_images=None,
         is_active=True,
         author_id=None,
+        author_name=None,
     ):
         current_user = _get_authenticated_user(info)
         _validate_no_outer_or_multiple_spaces(title, "title")
         _validate_no_outer_or_multiple_spaces(short_description, "shortDescription")
         _validate_no_outer_or_multiple_spaces(description, "description")
+        _validate_uploaded_image_file(featured_image, "featuredImage", required=True)
         title = _normalize_text(title)
         short_description = _to_title_case(short_description)
+        description = _normalize_text(description)
         slug = _normalize_text(slug)
 
         if not slug:
@@ -321,7 +550,11 @@ class CreateBlog(graphene.Mutation):
         _ensure_slug_unique(slug)
 
         user_model = get_user_model()
-        if author_id:
+        if author_name is not None:
+            if not current_user.is_superuser:
+                raise GraphQLError("Only superuser can set author name")
+            author = _get_or_create_author_from_name(author_name)
+        elif author_id:
             if not current_user.is_superuser and str(current_user.id) != str(author_id):
                 raise GraphQLError("Only superuser can create blog for another user")
             try:
@@ -338,6 +571,18 @@ class CreateBlog(graphene.Mutation):
         tags = list(BlogTag.objects.filter(id__in=tag_ids))
         if len(tags) != len(set(tag_ids)):
             raise GraphQLError("One or more tags are invalid")
+
+        existing_gallery_images = []
+        if gallery_ids:
+            existing_gallery_images = list(BlogImage.objects.filter(id__in=gallery_ids))
+            if len(existing_gallery_images) != len(set(gallery_ids)):
+                raise GraphQLError("One or more gallery images are invalid")
+
+        created_gallery_images = []
+        if gallery_images:
+            for index, gallery_image_file in enumerate(gallery_images, start=1):
+                _validate_uploaded_image_file(gallery_image_file, f"galleryImages[{index}]")
+                created_gallery_images.append(BlogImage.objects.create(image=gallery_image_file))
 
         blog = Blog(
             title=title,
@@ -357,13 +602,10 @@ class CreateBlog(graphene.Mutation):
         blog.categories.set(categories)
         blog.tags.set(tags)
 
-        if gallery_ids:
-            existing_gallery_images = BlogImage.objects.filter(id__in=gallery_ids)
-            if existing_gallery_images.count() != len(set(gallery_ids)):
-                raise GraphQLError("One or more gallery images are invalid")
-
-        if gallery_ids:
-            blog.gallery.set(list(BlogImage.objects.filter(id__in=gallery_ids)))
+        if existing_gallery_images:
+            blog.gallery.set(existing_gallery_images)
+        if created_gallery_images:
+            blog.gallery.add(*created_gallery_images)
 
         return CreateBlog(blog=blog)
 
@@ -376,11 +618,14 @@ class UpdateBlog(graphene.Mutation):
         slug = graphene.String(required=False)
         short_description = graphene.String(required=False)
         description = graphene.String(required=False)
-        featured_image = graphene.String(required=False)
+        featured_image = Upload(required=False)
         category_ids = graphene.List(graphene.ID, required=False)
         tag_ids = graphene.List(graphene.ID, required=False)
         gallery_ids = graphene.List(graphene.ID, required=False)
+        gallery_images = graphene.List(Upload, required=False)
         is_active = graphene.Boolean(required=False)
+        author_id = graphene.ID(required=False)
+        author_name = graphene.String(required=False)
 
     def mutate(
         self,
@@ -394,7 +639,10 @@ class UpdateBlog(graphene.Mutation):
         category_ids=None,
         tag_ids=None,
         gallery_ids=None,
+        gallery_images=None,
         is_active=None,
+        author_id=None,
+        author_name=None,
     ):
         current_user = _get_authenticated_user(info)
         try:
@@ -403,6 +651,7 @@ class UpdateBlog(graphene.Mutation):
             raise GraphQLError("Blog not found") from exc
 
         _ensure_blog_write_permission(current_user, blog)
+        previous_featured_image_name = blog.featured_image.name if blog.featured_image else ""
 
         if title is not None:
             _validate_no_outer_or_multiple_spaces(title, "title")
@@ -422,17 +671,37 @@ class UpdateBlog(graphene.Mutation):
             blog.short_description = _to_title_case(short_description)
         if description is not None:
             _validate_no_outer_or_multiple_spaces(description, "description")
-            blog.description = description
+            blog.description = _normalize_text(description)
         if featured_image is not None:
+            _validate_uploaded_image_file(featured_image, "featuredImage")
             blog.featured_image = featured_image
         if is_active is not None:
             blog.is_active = is_active
+        if author_name is not None:
+            if not current_user.is_superuser:
+                raise GraphQLError("Only superuser can update blog author")
+            blog.author = _get_or_create_author_from_name(author_name)
+        elif author_id is not None:
+            if not current_user.is_superuser:
+                raise GraphQLError("Only superuser can update blog author")
+            user_model = get_user_model()
+            try:
+                blog.author = user_model.objects.get(pk=author_id)
+            except user_model.DoesNotExist as exc:
+                raise GraphQLError("authorId: Author not found") from exc
         try:
             blog.save()
         except IntegrityError as exc:
             if "slug" in str(exc).lower():
                 raise GraphQLError("slug: This slug already exists.") from exc
             raise
+
+        if featured_image is not None and previous_featured_image_name:
+            if previous_featured_image_name != getattr(blog.featured_image, "name", ""):
+                try:
+                    blog.featured_image.storage.delete(previous_featured_image_name)
+                except Exception:
+                    pass
 
         if category_ids is not None:
             categories = list(BlogCategory.objects.filter(id__in=category_ids))
@@ -447,10 +716,26 @@ class UpdateBlog(graphene.Mutation):
             blog.tags.set(tags)
 
         if gallery_ids is not None:
+            previous_gallery_ids = set(blog.gallery.values_list("id", flat=True))
             existing_gallery_images = list(BlogImage.objects.filter(id__in=gallery_ids))
             if len(existing_gallery_images) != len(set(gallery_ids)):
                 raise GraphQLError("One or more gallery images are invalid")
             blog.gallery.set(existing_gallery_images)
+
+            kept_gallery_ids = {image.id for image in existing_gallery_images}
+            removed_gallery_ids = previous_gallery_ids - kept_gallery_ids
+            if removed_gallery_ids:
+                for removed_image in BlogImage.objects.filter(id__in=removed_gallery_ids):
+                    if not removed_image.blogs.exists():
+                        removed_image.delete()
+
+        if gallery_images:
+            created_gallery_images = []
+            for index, gallery_image_file in enumerate(gallery_images, start=1):
+                _validate_uploaded_image_file(gallery_image_file, f"galleryImages[{index}]")
+                created_gallery_images.append(BlogImage.objects.create(image=gallery_image_file))
+            if created_gallery_images:
+                blog.gallery.add(*created_gallery_images)
 
         return UpdateBlog(blog=blog)
 class DeleteBlog(graphene.Mutation):
@@ -460,13 +745,19 @@ class DeleteBlog(graphene.Mutation):
     ok = graphene.Boolean()
 
     def mutate(self, info, id):
-        blog = Blog.objects.get(pk=id, is_deleted=False)
-        blog.is_deleted = True
-        blog.deleted_at = timezone.now()
-        blog.save(update_fields=["is_deleted", "deleted_at"])
+        current_user = _get_authenticated_user(info)
+        _ensure_superuser(current_user, "delete blog")
+        blog = Blog.objects.filter(pk=id, is_deleted=False).first()
+        if not blog:
+            return DeleteBlog(ok=False)
+
+        blog.is_active = not blog.is_active
+        blog.save(update_fields=["is_active", "updated_at"])
         return DeleteBlog(ok=True)
 class AuthMutation(graphene.ObjectType):
     register = RegisterUser.Field()
+    dashboard_login = DashboardLogin.Field()
+    dashboard_logout = DashboardLogout.Field()
     token_auth = auth_mutations.ObtainJSONWebToken.Field()
     verify_token = auth_mutations.VerifyToken.Field()
     refresh_token = auth_mutations.RefreshToken.Field()
@@ -484,6 +775,25 @@ class BlogMutation(graphene.ObjectType):
 class Query(UserQuery, MeQuery, graphene.ObjectType):
     user = graphene.Field(UserType, username=graphene.String())
 
+    admin_dashboard_stats = graphene.Field(DashboardStatsType)
+    admin_categories = graphene.List(
+        BlogCategoryType,
+        is_active=graphene.Boolean(required=False),
+        search=graphene.String(required=False),
+    )
+    admin_tags = graphene.List(
+        BlogTagType,
+        is_active=graphene.Boolean(required=False),
+        search=graphene.String(required=False),
+    )
+    admin_blogs = graphene.List(
+        BlogType,
+        is_active=graphene.Boolean(required=False),
+        search=graphene.String(required=False),
+        limit=graphene.Int(required=False),
+    )
+    admin_blog = graphene.Field(BlogType, id=graphene.ID(required=True))
+
     categories = graphene.List(BlogCategoryType, is_active=graphene.Boolean())
     category = graphene.Field(BlogCategoryType, id=graphene.ID(required=True))
 
@@ -495,6 +805,7 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
         is_active=graphene.Boolean(),
         slug=graphene.String(),
         author_username=graphene.String(),
+        limit=graphene.Int(required=False),
     )
     blog = graphene.Field(BlogType, id=graphene.ID(), slug=graphene.String())
 
@@ -505,6 +816,97 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
         if not user:
             raise GraphQLError("No user found")
         return user
+
+    def resolve_admin_dashboard_stats(self, info):
+        current_user = _get_authenticated_user(info)
+        _ensure_superuser(current_user, "access dashboard stats")
+        return DashboardStatsType(
+            total_blogs=Blog.objects.filter(is_deleted=False).count(),
+            active_blogs=Blog.objects.filter(is_deleted=False, is_active=True).count(),
+            inactive_blogs=Blog.objects.filter(is_deleted=False, is_active=False).count(),
+            total_categories=BlogCategory.objects.count(),
+            active_categories=BlogCategory.objects.filter(is_active=True).count(),
+            inactive_categories=BlogCategory.objects.filter(is_active=False).count(),
+            total_tags=BlogTag.objects.count(),
+            active_tags=BlogTag.objects.filter(is_active=True).count(),
+            inactive_tags=BlogTag.objects.filter(is_active=False).count(),
+        )
+
+    def resolve_admin_categories(self, info, is_active=None, search=None):
+        current_user = _get_authenticated_user(info)
+        _ensure_superuser(current_user, "access categories")
+
+        queryset = BlogCategory.objects.all().order_by("-created_at")
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
+        if search:
+            term = _normalize_text(search)
+            if term:
+                queryset = queryset.filter(Q(name__icontains=term) | Q(slug__icontains=term))
+        return queryset
+
+    def resolve_admin_tags(self, info, is_active=None, search=None):
+        current_user = _get_authenticated_user(info)
+        _ensure_superuser(current_user, "access tags")
+
+        queryset = BlogTag.objects.all().order_by("-created_at")
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
+        if search:
+            term = _normalize_text(search)
+            if term:
+                queryset = queryset.filter(Q(name__icontains=term) | Q(slug__icontains=term))
+        return queryset
+
+    def resolve_admin_blogs(self, info, is_active=None, search=None, limit=None):
+        current_user = _get_authenticated_user(info)
+        _ensure_superuser(current_user, "access blogs")
+
+        queryset = (
+            Blog.objects.select_related("author")
+            .filter(is_deleted=False)
+            .only(
+                "id",
+                "title",
+                "slug",
+                "is_active",
+                "created_at",
+                "updated_at",
+                "author__id",
+                "author__username",
+            )
+            .order_by("-created_at")
+        )
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
+        if search:
+            term = _normalize_text(search)
+            if term:
+                queryset = queryset.filter(
+                    Q(title__icontains=term)
+                    | Q(slug__icontains=term)
+                    | Q(author__username__icontains=term)
+                )
+
+        if limit is not None:
+            safe_limit = max(1, min(int(limit), 200))
+            queryset = queryset[:safe_limit]
+
+        return queryset
+
+    def resolve_admin_blog(self, info, id):
+        current_user = _get_authenticated_user(info)
+        _ensure_superuser(current_user, "access blog")
+
+        blog = (
+            Blog.objects.select_related("author")
+            .prefetch_related("categories", "tags", "gallery")
+            .filter(pk=id, is_deleted=False)
+            .first()
+        )
+        if not blog:
+            raise GraphQLError("Blog not found")
+        return blog
 
     def resolve_categories(self, info, is_active=None):
         queryset = BlogCategory.objects.filter(is_active=True).order_by("-created_at")
@@ -524,16 +926,34 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
     def resolve_tag(self, info, id):
         return BlogTag.objects.filter(pk=id, is_active=True).first()
 
-    def resolve_blogs(self, info, is_active=None, slug=None, author_username=None):
-        queryset = Blog.objects.select_related("author").prefetch_related(
-            "categories", "tags", "gallery"
-        ).filter(is_active=True).order_by("-created_at")
+    def resolve_blogs(self, info, is_active=None, slug=None, author_username=None, limit=None):
+        queryset = (
+            Blog.objects.select_related("author")
+            .filter(is_active=True, is_deleted=False)
+            .only(
+                "id",
+                "title",
+                "slug",
+                "short_description",
+                "view_count",
+                "created_at",
+                "updated_at",
+                "author__id",
+                "author__username",
+                "author__first_name",
+            )
+            .order_by("-created_at")
+        )
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active)
         if slug:
             queryset = queryset.filter(slug=slug)
         if author_username:
             queryset = queryset.filter(author__username=author_username)
+
+        safe_limit = 20 if limit is None else max(1, min(int(limit), 100))
+        queryset = queryset[:safe_limit]
+
         return queryset
 
     def resolve_blog(self, info, id=None, slug=None):

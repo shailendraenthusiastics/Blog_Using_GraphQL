@@ -8,24 +8,331 @@
   <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_tags' %}">Back</a>
 </div>
 
+<div id="tagFormError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
+<style>
+  .field-error {
+    display: none;
+    margin-top: 6px;
+    color: #b91c1c;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+</style>
+
 <div class="panel" style="padding:16px;">
-  <form method="post">
-    {% csrf_token %}
+  <form id="tagForm" novalidate>
     <div class="field">
       <label>Tag Name</label>
-      <input type="text" name="name" required maxlength="100" value="{% if form_values %}{{ form_values.name|default:'' }}{% elif tag %}{{ tag.name }}{% endif %}" />
+      <input type="text" id="tagName" name="name" required maxlength="100" />
+      <div id="tagNameError" class="field-error"></div>
     </div>
     <div class="field">
       <label>Slug</label>
-      <input type="text" name="slug" maxlength="150" value="{% if form_values %}{{ form_values.slug|default:'' }}{% elif tag and tag.slug %}{{ tag.slug }}{% endif %}" />
+      <input type="text" id="tagSlug" name="slug" maxlength="150" />
       <div class="muted">Leave blank to auto-generate from tag name</div>
+      <div id="tagSlugError" class="field-error"></div>
     </div>
     <div class="field">
-      <label><input type="checkbox" name="is_active" {% if form_values %}{% if form_values.is_active %}checked{% endif %}{% elif tag %}{% if tag.is_active %}checked{% endif %}{% else %}checked{% endif %} /> Active</label>
+      <label><input type="checkbox" id="tagIsActive" name="is_active" checked /> Active</label>
     </div>
     <div class="actions">
       <button class="btn" type="submit">{% if is_edit %}Update Tag{% else %}Create Tag{% endif %}</button>
     </div>
   </form>
 </div>
+
+<div
+  id="tagPageConfig"
+  data-is-edit="{% if is_edit %}true{% else %}false{% endif %}"
+  data-tag-id="{% if tag %}{{ tag.id }}{% endif %}"
+></div>
+
+<script>
+const tagPageConfig = document.getElementById("tagPageConfig");
+const isEditTagPage = Boolean(tagPageConfig && tagPageConfig.dataset.isEdit === "true");
+const initialTagId = tagPageConfig && tagPageConfig.dataset.tagId ? tagPageConfig.dataset.tagId : null;
+const DOUBLE_SPACE_PATTERN = /(?<=\S) {2,}(?=\S)/;
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const TAG_NAME_MAX_LENGTH = 100;
+const TAG_SLUG_MAX_LENGTH = 150;
+
+const TAG_FIELD_ERROR_IDS = {
+  name: "tagNameError",
+  slug: "tagSlugError"
+};
+
+function parseTagIdFromPath() {
+  const match = window.location.pathname.match(/\/tags\/(\d+)\//);
+  return match ? match[1] : null;
+}
+
+function getCurrentTagId() {
+  return initialTagId || parseTagIdFromPath();
+}
+
+function setTagFormError(message) {
+  const errorBox = document.getElementById("tagFormError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+function setTagFieldError(fieldKey, message) {
+  const errorElement = document.getElementById(TAG_FIELD_ERROR_IDS[fieldKey] || "");
+  if (!errorElement) {
+    return;
+  }
+  if (!message) {
+    errorElement.style.display = "none";
+    errorElement.textContent = "";
+    return;
+  }
+  errorElement.style.display = "block";
+  errorElement.textContent = message;
+}
+
+function clearTagFieldErrors() {
+  Object.keys(TAG_FIELD_ERROR_IDS).forEach(function (key) {
+    setTagFieldError(key, "");
+  });
+}
+
+function collectTagValues() {
+  const nameRaw = document.getElementById("tagName").value || "";
+  const slugRaw = document.getElementById("tagSlug").value || "";
+
+  return {
+    nameRaw: nameRaw,
+    slugRaw: slugRaw,
+    name: nameRaw.trim(),
+    slug: slugRaw.trim(),
+    isActive: document.getElementById("tagIsActive").checked
+  };
+}
+
+function validateTagValues(values) {
+  const errors = {
+    name: "",
+    slug: ""
+  };
+
+  if (!values.name) {
+    errors.name = "Tag name is required.";
+  } else if (values.nameRaw !== values.name) {
+    errors.name = "Tag name cannot have leading or trailing spaces.";
+  } else if (DOUBLE_SPACE_PATTERN.test(values.name)) {
+    errors.name = "Tag name cannot contain multiple spaces between words.";
+  } else if (values.name.length > TAG_NAME_MAX_LENGTH) {
+    errors.name = "Tag name must be 100 characters or fewer.";
+  }
+
+  if (values.slug) {
+    if (values.slugRaw !== values.slug) {
+      errors.slug = "Slug cannot have leading or trailing spaces.";
+    } else if (DOUBLE_SPACE_PATTERN.test(values.slug)) {
+      errors.slug = "Slug cannot contain multiple spaces between words.";
+    } else if (values.slug.length > TAG_SLUG_MAX_LENGTH) {
+      errors.slug = "Slug must be 150 characters or fewer.";
+    } else if (!SLUG_PATTERN.test(values.slug)) {
+      errors.slug = "Slug must contain lowercase letters, numbers, and hyphens only.";
+    }
+  }
+
+  return errors;
+}
+
+function applyTagFieldErrors(errors) {
+  let hasError = false;
+  Object.keys(TAG_FIELD_ERROR_IDS).forEach(function (key) {
+    const message = errors[key] || "";
+    if (message) {
+      hasError = true;
+    }
+    setTagFieldError(key, message);
+  });
+  return hasError;
+}
+
+function validateAndRenderTagField(fieldKey) {
+  const values = collectTagValues();
+  const errors = validateTagValues(values);
+  setTagFieldError(fieldKey, errors[fieldKey] || "");
+  return !errors[fieldKey];
+}
+
+function mapTagServerErrorToField(rawMessage) {
+  const firstMessage = String(rawMessage || "").split("|")[0].trim();
+  const lowered = firstMessage.toLowerCase();
+
+  if (lowered.startsWith("name:")) {
+    return {
+      field: "name",
+      message: firstMessage.slice(5).trim() || firstMessage
+    };
+  }
+  if (lowered.startsWith("slug:")) {
+    return {
+      field: "slug",
+      message: firstMessage.slice(5).trim() || firstMessage
+    };
+  }
+
+  return null;
+}
+
+function bindTagLiveValidation() {
+  document.getElementById("tagName").addEventListener("input", function () {
+    validateAndRenderTagField("name");
+  });
+  document.getElementById("tagSlug").addEventListener("input", function () {
+    validateAndRenderTagField("slug");
+  });
+}
+
+async function graphQLRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      query: query,
+      variables: variables || {}
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Request failed.";
+    throw new Error(message);
+  }
+
+  return payload.data;
+}
+
+async function loadTagForEdit() {
+  if (!isEditTagPage) {
+    document.getElementById("tagIsActive").checked = true;
+    return;
+  }
+
+  const tagId = getCurrentTagId();
+  if (!tagId) {
+    setTagFormError("Tag ID is missing in the URL.");
+    return;
+  }
+
+  try {
+    const data = await graphQLRequest(
+      "query AdminTagsForEdit {"
+      + " adminTags { id name slug isActive }"
+      + " }"
+    );
+
+    const currentTag = (data.adminTags || []).find(function (item) {
+      return String(item.id) === String(tagId);
+    });
+
+    if (!currentTag) {
+      throw new Error("Tag not found.");
+    }
+
+    document.getElementById("tagName").value = currentTag.name || "";
+    document.getElementById("tagSlug").value = currentTag.slug || "";
+    document.getElementById("tagIsActive").checked = Boolean(currentTag.isActive);
+  } catch (error) {
+    setTagFormError(error.message || "Failed to load tag details.");
+  }
+}
+
+document.getElementById("tagForm").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  setTagFormError("");
+  clearTagFieldErrors();
+
+  const values = collectTagValues();
+  const hasValidationError = applyTagFieldErrors(validateTagValues(values));
+  if (hasValidationError) {
+    setTagFormError("Please fix the highlighted errors.");
+    return;
+  }
+
+  const tagId = getCurrentTagId();
+
+  try {
+    if (isEditTagPage) {
+      if (!tagId) {
+        throw new Error("Tag ID is missing in the URL.");
+      }
+
+      const updateData = await graphQLRequest(
+        "mutation UpdateTag($id: ID!, $name: String!, $slug: String, $isActive: Boolean) {"
+        + " updateTag(id: $id, name: $name, slug: $slug, isActive: $isActive) {"
+        + " tag { id }"
+        + " }"
+        + " }",
+        {
+          id: tagId,
+          name: values.name,
+          slug: values.slug || null,
+          isActive: values.isActive
+        }
+      );
+
+      if (!updateData.updateTag || !updateData.updateTag.tag) {
+        throw new Error("Tag update failed.");
+      }
+    } else {
+      const createData = await graphQLRequest(
+        "mutation CreateTag($name: String!, $slug: String, $isActive: Boolean) {"
+        + " createTag(name: $name, slug: $slug, isActive: $isActive) {"
+        + " tag { id }"
+        + " }"
+        + " }",
+        {
+          name: values.name,
+          slug: values.slug || null,
+          isActive: values.isActive
+        }
+      );
+
+      if (!createData.createTag || !createData.createTag.tag) {
+        throw new Error("Tag creation failed.");
+      }
+    }
+
+    try {
+      sessionStorage.setItem(
+        "dashboard_tag_success",
+        isEditTagPage ? "Tag updated successfully." : "Tag created successfully."
+      );
+    } catch (storageError) {
+    }
+    window.location.href = "{% url 'admin_dashboard:dashboard_tags' %}";
+  } catch (error) {
+    const errorMessage = error.message || "Unable to save tag.";
+    const mappedError = mapTagServerErrorToField(errorMessage);
+    if (mappedError) {
+      setTagFieldError(mappedError.field, mappedError.message);
+      setTagFormError("Please fix the highlighted error and try again.");
+    } else {
+      setTagFormError(errorMessage);
+    }
+  }
+});
+
+bindTagLiveValidation();
+loadTagForEdit();
+</script>
 {% endblock %}
