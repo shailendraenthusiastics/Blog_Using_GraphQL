@@ -55,8 +55,8 @@
     }
     .messages {
       margin-bottom: 12px;
-      padding-left: 16px;
       color: #b91c1c;
+      font-size: 14px;
     }
   </style>
 </head>
@@ -64,18 +64,9 @@
   <div class="card">
     <h1>Admin Dashboard Login</h1>
 
-    {% if messages %}
-      <ul class="messages">
-        {% for message in messages %}
-          <li>{{ message }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
+    <div id="loginError" class="messages" style="display:none;"></div>
 
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{{ next }}" />
-
+    <form id="loginForm" novalidate>
       <div class="field">
         <label for="username">Username</label>
         <input id="username" type="text" name="username" required />
@@ -86,8 +77,108 @@
         <input id="password" type="password" name="password" required />
       </div>
 
-      <button type="submit">Login</button>
+      <button id="loginButton" type="submit">Login</button>
     </form>
   </div>
+
+<script>
+function getNextUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const nextValue = (params.get("next") || "").trim();
+  if (!nextValue) {
+    return "/admin-dashboard/dashboard/";
+  }
+  if (!nextValue.startsWith("/")) {
+    return "/admin-dashboard/dashboard/";
+  }
+  if (nextValue.startsWith("//")) {
+    return "/admin-dashboard/dashboard/";
+  }
+  if (nextValue === "/admin-dashboard/" || nextValue === "/admin-dashboard/login/") {
+    return "/admin-dashboard/dashboard/";
+  }
+  return nextValue;
+}
+
+function setLoginError(message) {
+  const errorBox = document.getElementById("loginError");
+  if (!errorBox) {
+    return;
+  }
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
+
+async function graphQLRequest(query, variables) {
+  const response = await fetch("/graphql/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      query: query,
+      variables: variables || {}
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || (payload.errors && payload.errors.length)) {
+    const message = payload.errors && payload.errors.length
+      ? payload.errors.map(function (item) { return item.message; }).join(" | ")
+      : "Login failed.";
+    throw new Error(message);
+  }
+  return payload.data;
+}
+
+document.getElementById("loginForm").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  setLoginError("");
+
+  const username = (document.getElementById("username").value || "").trim();
+  const password = document.getElementById("password").value || "";
+  const nextUrl = getNextUrl();
+
+  if (!username || !password) {
+    setLoginError("Username and password are required.");
+    return;
+  }
+
+  const loginButton = document.getElementById("loginButton");
+  loginButton.disabled = true;
+
+  try {
+    const data = await graphQLRequest(
+      "mutation DashboardLogin($username: String!, $password: String!, $nextUrl: String) {"
+      + " dashboardLogin(username: $username, password: $password, nextUrl: $nextUrl) {"
+      + " success message nextUrl"
+      + " }"
+      + " }",
+      {
+        username: username,
+        password: password,
+        nextUrl: nextUrl
+      }
+    );
+
+    const loginData = data.dashboardLogin;
+    if (!loginData || !loginData.success) {
+      throw new Error("Login failed.");
+    }
+
+    window.location.href = loginData.nextUrl || nextUrl;
+  } catch (error) {
+    setLoginError(error.message || "Login failed.");
+  } finally {
+    loginButton.disabled = false;
+  }
+});
+</script>
 </body>
 </html>

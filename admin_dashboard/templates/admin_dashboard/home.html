@@ -1,91 +1,136 @@
-{% extends 'admin_dashboard/dashboard_base.html' %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #e5e7eb; border-right: 1px solid #cbd5e1; padding: 20px 14px; }
+    .sidebar h2 { margin: 0 0 24px; font-size: 28px; color: #1f2937; }
+    .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 32px; margin: 14px 0; }
+    .nav-link.active { font-weight: 700; }
+    .content { flex: 1; padding: 20px 18px; }
+    .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .page-title { margin: 0; font-size: 52px; color: #0f172a; }
+    .btn { display: inline-block; border: 1px solid #16a34a; background: #16a34a; color: #fff; text-decoration: none; padding: 10px 16px; border-radius: 7px; font-size: 28px; cursor: pointer; }
+    .btn.secondary { border-color: #2563eb; background: #fff; color: #2563eb; }
+    .panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1f2937; color: #fff; text-align: left; padding: 12px; font-size: 24px; }
+    td { padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 28px; vertical-align: top; }
+    .tag { display: inline-block; border-radius: 999px; font-size: 20px; padding: 5px 12px; color: #fff; }
+    .tag.active { background: #16a34a; }
+    .tag.inactive { background: #64748b; }
+    .thumb { width: 120px; height: 80px; object-fit: cover; border-radius: 6px; background: #e5e7eb; }
+    .message { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 22px; }
+    .message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .muted { color: #6b7280; font-size: 20px; }
+    .link-btn { color: #2563eb; text-decoration: none; font-size: 24px; }
+    .home-stats { display: flex; justify-content: space-between; gap: 14px; text-align: center; }
+    .home-card { flex: 1; border-radius: 10px; padding: 18px 12px; color: #fff; }
+    .home-card .label { font-size: 30px; font-weight: 700; margin-bottom: 10px; }
+    .home-card .value { font-size: 38px; font-weight: 700; }
+    .home-card.blog { background: #1d4ed8; }
+    .home-card.tag { background: #16a34a; }
+    .home-card.category { background: #f59e0b; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>DASHBOARD</h2>
+      <a class="nav-link active" href="/admin-dashboard/dashboard/">Home</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/blogs/">Blogs</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/categories/">Categories</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/tags/">Tags</a>
+    </aside>
 
-{% block title %}Home{% endblock %}
+    <main class="content">
+      <div class="top-row">
+        <h1 class="page-title">Home</h1>
+        <button id="logoutButton" class="btn secondary" type="button">Logout</button>
+      </div>
 
-{% block content %}
-<div class="top-row">
-  <h1 class="page-title">Home</h1>
-  <a class="btn secondary" href="{% url 'admin_dashboard:logout' %}">Logout</a>
-</div>
+      <div id="homeError" class="message error" style="display:none; margin-bottom: 10px;"></div>
 
-<div id="homeError" class="message error" style="display:none; margin-bottom: 10px;"></div>
+      <div class="panel" style="padding: 10px; box-shadow:none; margin-bottom: 10px; border:none;">
+        <div class="home-stats">
+          <div class="home-card blog">
+            <div class="label">Total Blog</div>
+            <div class="value" id="totalBlogs">0</div>
+          </div>
+          <div class="home-card tag">
+            <div class="label">Inactive Blogs</div>
+            <div class="value" id="inactiveBlogs">0</div>
+          </div>
+          <div class="home-card category">
+            <div class="label">Active Blogs</div>
+            <div class="value" id="activeBlogs">0</div>
+          </div>
+        </div>
+      </div>
 
-<div class="panel" style="padding: 10px; box-shadow:none; margin-bottom: 10px; border:none;">
-  <div class="home-stats">
-    <div class="home-card blog">
-      <div class="label"> Total Blog</div>
-      <div class="value" id="totalBlogs">0</div>
-    </div>
-    <div class="home-card tag">
-      <div class="label">Inactive Blogs</div>
-      <div class="value" id="inactiveBlogs">0</div>
-    </div>
-    <div class="home-card category">
-      <div class="label">Active Blogs</div>
-      <div class="value" id="activeBlogs">0</div>
-    </div>
-  </div>
-</div>
+      <div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none; margin-bottom: 10px;">
+        <div class="home-stats">
+          <div class="home-card blog">
+            <div class="label">Total Category</div>
+            <div class="value" id="totalCategories">0</div>
+          </div>
+          <div class="home-card tag">
+            <div class="label">Inactive Category</div>
+            <div class="value" id="inactiveCategories">0</div>
+          </div>
+          <div class="home-card category">
+            <div class="label">Active Category</div>
+            <div class="value" id="activeCategories">0</div>
+          </div>
+        </div>
+      </div>
 
-<div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none; margin-bottom: 10px;">
-  <div class="home-stats">
-    <div class="home-card blog">
-      <div class="label"> Total Category</div>
-      <div class="value" id="totalCategories">0</div>
-    </div>
-    <div class="home-card tag">
-      <div class="label">Inactive Category</div>
-      <div class="value" id="inactiveCategories">0</div>
-    </div>
-    <div class="home-card category">
-      <div class="label">Active Category</div>
-      <div class="value" id="activeCategories">0</div>
-    </div>
-  </div>
-</div>
+      <div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none; margin-bottom: 10px;">
+        <div class="home-stats">
+          <div class="home-card blog">
+            <div class="label">Total Tags</div>
+            <div class="value" id="totalTags">0</div>
+          </div>
+          <div class="home-card tag">
+            <div class="label">Inactive Tags</div>
+            <div class="value" id="inactiveTags">0</div>
+          </div>
+          <div class="home-card category">
+            <div class="label">Active Tags</div>
+            <div class="value" id="activeTags">0</div>
+          </div>
+        </div>
+      </div>
 
-<div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none; margin-bottom: 10px;">
-  <div class="home-stats">
-    <div class="home-card blog">
-      <div class="label"> Total Tags</div>
-      <div class="value" id="totalTags">0</div>
-    </div>
-    <div class="home-card tag">
-      <div class="label">Inactive Tags</div>
-      <div class="value" id="inactiveTags">0</div>
-    </div>
-    <div class="home-card category">
-      <div class="label">Active Tags</div>
-      <div class="value" id="activeTags">0</div>
-    </div>
-  </div>
-</div>
+      <div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none;">
+        <div class="top-row" style="margin-bottom: 10px;">
+          <h1 class="page-title" style="font-size: 34px;">Recent Blogs (10)</h1>
+          <a class="link-btn" href="/admin-dashboard/dashboard/blogs/">Show All</a>
+        </div>
 
-<div class="panel" style="padding: 10px; margin-top: 10px; border:none; box-shadow:none;">
-  <div class="top-row" style="margin-bottom: 10px;">
-    <h1 class="page-title" style="font-size: 34px;">Recent Blogs (10)</h1>
-    <a class="btn-secondary" href="{% url 'admin_dashboard:dashboard_blogs' %}">Show All</a>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>S.No</th>
-        <th>Title</th>
-        <th>Featured</th>
-        <th>Slug</th>
-        <th>Author</th>
-        <th>Created</th>
-        <th>Updated</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody id="homeBlogRows">
-      <tr>
-        <td colspan="8" class="muted">Loading blogs...</td>
-      </tr>
-    </tbody>
-  </table>
+        <table>
+          <thead>
+            <tr>
+              <th>S.No</th>
+              <th>Title</th>
+              <th>Featured</th>
+              <th>Slug</th>
+              <th>Author</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="homeBlogRows">
+            <tr>
+              <td colspan="6" class="muted">Loading blogs...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
   </div>
 
 <script>
@@ -105,17 +150,6 @@ function authorName(author) {
   const username = (author.username || "").trim();
   const cleanedUsername = username.replace(/_[0-9]+$/, "");
   return cleanedUsername || username || "Unknown";
-}
-
-function formatDate(value) {
-  if (!value) {
-    return "-";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "-";
-  }
-  return parsed.toLocaleString();
 }
 
 function featuredImageUrl(blogId) {
@@ -143,7 +177,7 @@ async function fetchGraphQL(query, variables) {
       "Content-Type": "application/json"
     },
     credentials: "include",
-    body: JSON.stringify({ query: query })
+    body: JSON.stringify({ query: query, variables: variables || {} })
   });
 
   const payload = await response.json();
@@ -165,7 +199,7 @@ function renderRecentBlogs(blogs) {
   }
 
   if (!blogs.length) {
-    rows.innerHTML = "<tr><td colspan='8' class='muted'>No blogs found.</td></tr>";
+    rows.innerHTML = "<tr><td colspan='6' class='muted'>No blogs found.</td></tr>";
     return;
   }
 
@@ -183,8 +217,6 @@ function renderRecentBlogs(blogs) {
       + "<td><img class='thumb' src='" + featuredImageUrl(blog.id) + "' alt='Featured image for " + safeTitle + "' loading='lazy' decoding='async' /></td>"
       + "<td>" + safeSlug + "</td>"
       + "<td>" + safeAuthor + "</td>"
-      + "<td>" + escapeHtml(formatDate(blog.createdAt)) + "</td>"
-      + "<td>" + escapeHtml(formatDate(blog.updatedAt)) + "</td>"
       + "<td><span class='tag " + statusClass + "'>" + statusText + "</span></td>"
       + "</tr>";
   }).join("");
@@ -202,7 +234,7 @@ async function loadHomeData() {
       + " totalTags activeTags inactiveTags"
       + " }"
       + " adminBlogs(isActive: true, limit: 10) {"
-      + " id title slug isActive createdAt updatedAt"
+      + " id title slug isActive"
       + " author { username }"
       + " }"
       + " }"
@@ -225,11 +257,21 @@ async function loadHomeData() {
     setError(error.message || "Failed to load dashboard data.");
     const rows = document.getElementById("homeBlogRows");
     if (rows) {
-      rows.innerHTML = "<tr><td colspan='8' class='muted'>Unable to load blogs.</td></tr>";
+      rows.innerHTML = "<tr><td colspan='6' class='muted'>Unable to load blogs.</td></tr>";
     }
   }
 }
 
+async function logoutDashboard() {
+  try {
+    await fetchGraphQL("mutation DashboardLogout { dashboardLogout { success message } }");
+  } catch (error) {
+  }
+  window.location.href = "/admin-dashboard/login/";
+}
+
+document.getElementById("logoutButton").addEventListener("click", logoutDashboard);
 loadHomeData();
 </script>
-{% endblock %}
+</body>
+</html>

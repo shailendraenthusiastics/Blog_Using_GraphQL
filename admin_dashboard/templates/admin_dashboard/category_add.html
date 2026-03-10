@@ -1,68 +1,82 @@
-{% extends 'admin_dashboard/dashboard_base.html' %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Category</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #e5e7eb; border-right: 1px solid #cbd5e1; padding: 20px 14px; }
+    .sidebar h2 { margin: 0 0 24px; font-size: 28px; color: #1f2937; }
+    .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 32px; margin: 14px 0; }
+    .nav-link.active { font-weight: 700; }
+    .content { flex: 1; padding: 20px 18px; }
+    .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .page-title { margin: 0; font-size: 52px; color: #0f172a; }
+    .btn { display: inline-block; border: 1px solid #16a34a; background: #16a34a; color: #fff; text-decoration: none; padding: 10px 16px; border-radius: 7px; font-size: 28px; cursor: pointer; }
+    .btn.secondary { border-color: #2563eb; background: #fff; color: #2563eb; }
+    .panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+    .message { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 22px; }
+    .message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 24px; margin-bottom: 6px; }
+    .field input { width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 24px; box-sizing: border-box; }
+    .muted { color: #6b7280; font-size: 20px; }
+    .actions { display: flex; gap: 10px; align-items: center; }
+    .field-error { display: none; margin-top: 6px; color: #b91c1c; font-size: 13px; line-height: 1.3; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>DASHBOARD</h2>
+      <a class="nav-link" href="/admin-dashboard/dashboard/">Home</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/blogs/">Blogs</a>
+      <a class="nav-link active" href="/admin-dashboard/dashboard/categories/">Categories</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/tags/">Tags</a>
+    </aside>
 
-{% block title %}{% if is_edit %}Edit Category{% else %}Add Category{% endif %}{% endblock %}
+    <main class="content">
+      <div class="top-row">
+        <h1 class="page-title" id="categoryPageHeading">Add Category</h1>
+        <a class="btn secondary" href="/admin-dashboard/dashboard/categories/">Back</a>
+      </div>
 
-{% block content %}
-<div class="top-row">
-  <h1 class="page-title">{% if is_edit %}Edit Category{% else %}Add Category{% endif %}</h1>
-  <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_categories' %}">Back</a>
-</div>
+      <div id="categoryFormError" class="message error" style="display:none; margin-bottom:10px;"></div>
 
-<div id="categoryFormError" class="message error" style="display:none; margin-bottom:10px;"></div>
+      <div class="panel" style="padding:16px;">
+        <form id="categoryForm" novalidate>
+          <div class="field">
+            <label>Category Name</label>
+            <input type="text" id="categoryName" name="name" required maxlength="100" />
+            <div id="categoryNameError" class="field-error"></div>
+          </div>
 
-<style>
-  .field-error {
-    display: none;
-    margin-top: 6px;
-    color: #b91c1c;
-    font-size: 13px;
-    line-height: 1.3;
-  }
-</style>
+          <div class="field">
+            <label>Slug</label>
+            <input type="text" id="categorySlug" name="slug" maxlength="150" />
+            <div class="muted">Leave blank to auto-generate from category name</div>
+            <div id="categorySlugError" class="field-error"></div>
+          </div>
 
-<div class="panel" style="padding:16px;">
-  <form id="categoryForm" novalidate>
+          <div class="field">
+            <label>
+              <input type="checkbox" id="categoryIsActive" name="is_active" checked />
+              Active
+            </label>
+          </div>
 
-    <div class="field">
-      <label>Category Name</label>
-      <input type="text" id="categoryName" name="name" required maxlength="100" />
-      <div id="categoryNameError" class="field-error"></div>
-    </div>
-
-    <div class="field">
-      <label>Slug</label>
-      <input type="text" id="categorySlug" name="slug" maxlength="150" />
-      <div class="muted">Leave blank to auto-generate from category name</div>
-      <div id="categorySlugError" class="field-error"></div>
-    </div>
-
-    <div class="field">
-      <label>
-        <input type="checkbox" id="categoryIsActive" name="is_active" checked />
-        Active
-      </label>
-    </div>
-
-    <div class="actions">
-      <button class="btn" type="submit">
-        {% if is_edit %}Update Category{% else %}Create Category{% endif %}
-      </button>
-    </div>
-
-  </form>
-
-</div>
-
-<div
-  id="categoryPageConfig"
-  data-is-edit="{% if is_edit %}true{% else %}false{% endif %}"
-  data-category-id="{% if category %}{{ category.id }}{% endif %}"
-></div>
+          <div class="actions">
+            <button class="btn" id="categorySubmitButton" type="submit">Create Category</button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
 
 <script>
-const categoryPageConfig = document.getElementById("categoryPageConfig");
-const isEditCategoryPage = Boolean(categoryPageConfig && categoryPageConfig.dataset.isEdit === "true");
-const initialCategoryId = categoryPageConfig && categoryPageConfig.dataset.categoryId ? categoryPageConfig.dataset.categoryId : null;
+const isEditCategoryPage = /\/categories\/\d+\/edit\/?$/.test(window.location.pathname);
 const DOUBLE_SPACE_PATTERN = /(?<=\S) {2,}(?=\S)/;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CATEGORY_NAME_MAX_LENGTH = 100;
@@ -79,7 +93,22 @@ function parseCategoryIdFromPath() {
 }
 
 function getCurrentCategoryId() {
-  return initialCategoryId || parseCategoryIdFromPath();
+  return parseCategoryIdFromPath();
+}
+
+function setCategoryModeText() {
+  const heading = document.getElementById("categoryPageHeading");
+  const button = document.getElementById("categorySubmitButton");
+
+  if (isEditCategoryPage) {
+    document.title = "Edit Category";
+    heading.textContent = "Edit Category";
+    button.textContent = "Update Category";
+  } else {
+    document.title = "Add Category";
+    heading.textContent = "Add Category";
+    button.textContent = "Create Category";
+  }
 }
 
 function setCategoryFormError(message) {
@@ -268,84 +297,84 @@ async function loadCategoryForEdit() {
 }
 
 document.getElementById("categoryForm").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  setCategoryFormError("");
+  clearCategoryFieldErrors();
 
-    event.preventDefault();
-    setCategoryFormError("");
-    clearCategoryFieldErrors();
+  const values = collectCategoryValues();
+  const hasValidationError = applyCategoryFieldErrors(validateCategoryValues(values));
+  if (hasValidationError) {
+    setCategoryFormError("Please fix the highlighted errors.");
+    return;
+  }
 
-    const values = collectCategoryValues();
-    const hasValidationError = applyCategoryFieldErrors(validateCategoryValues(values));
-    if (hasValidationError) {
-      setCategoryFormError("Please fix the highlighted errors.");
-      return;
+  const categoryId = getCurrentCategoryId();
+
+  try {
+    if (isEditCategoryPage) {
+      if (!categoryId) {
+        throw new Error("Category ID is missing in URL.");
+      }
+
+      const updateData = await graphQLRequest(
+        "mutation UpdateCategory($id: ID!, $name: String!, $slug: String, $isActive: Boolean) {"
+        + " updateCategory(id: $id, name: $name, slug: $slug, isActive: $isActive) {"
+        + " category { id }"
+        + " }"
+        + " }",
+        {
+          id: categoryId,
+          name: values.name,
+          slug: values.slug || null,
+          isActive: values.isActive
+        }
+      );
+
+      if (!updateData.updateCategory || !updateData.updateCategory.category) {
+        throw new Error("Category update failed.");
+      }
+    } else {
+      const createData = await graphQLRequest(
+        "mutation CreateCategory($name: String!, $slug: String, $isActive: Boolean) {"
+        + " createCategory(name: $name, slug: $slug, isActive: $isActive) {"
+        + " category { id }"
+        + " }"
+        + " }",
+        {
+          name: values.name,
+          slug: values.slug || null,
+          isActive: values.isActive
+        }
+      );
+
+      if (!createData.createCategory || !createData.createCategory.category) {
+        throw new Error("Category creation failed.");
+      }
     }
-
-    const categoryId = getCurrentCategoryId();
 
     try {
-      if (isEditCategoryPage) {
-        if (!categoryId) {
-          throw new Error("Category ID is missing in URL.");
-        }
-
-        const updateData = await graphQLRequest(
-          "mutation UpdateCategory($id: ID!, $name: String!, $slug: String, $isActive: Boolean) {"
-          + " updateCategory(id: $id, name: $name, slug: $slug, isActive: $isActive) {"
-          + " category { id }"
-          + " }"
-          + " }",
-          {
-            id: categoryId,
-            name: values.name,
-            slug: values.slug || null,
-            isActive: values.isActive
-          }
-        );
-
-        if (!updateData.updateCategory || !updateData.updateCategory.category) {
-          throw new Error("Category update failed.");
-        }
-      } else {
-        const createData = await graphQLRequest(
-          "mutation CreateCategory($name: String!, $slug: String, $isActive: Boolean) {"
-          + " createCategory(name: $name, slug: $slug, isActive: $isActive) {"
-          + " category { id }"
-          + " }"
-          + " }",
-          {
-            name: values.name,
-            slug: values.slug || null,
-            isActive: values.isActive
-          }
-        );
-
-        if (!createData.createCategory || !createData.createCategory.category) {
-          throw new Error("Category creation failed.");
-        }
-      }
-
-      try {
-        sessionStorage.setItem(
-          "dashboard_category_success",
-          isEditCategoryPage ? "Category updated successfully." : "Category created successfully."
-        );
-      } catch (storageError) {
-      }
-      window.location.href = "{% url 'admin_dashboard:dashboard_categories' %}";
-    } catch (error) {
-      const errorMessage = error.message || "Unable to save category.";
-      const mappedError = mapCategoryServerErrorToField(errorMessage);
-      if (mappedError) {
-        setCategoryFieldError(mappedError.field, mappedError.message);
-        setCategoryFormError("Please fix the highlighted error and try again.");
-      } else {
-        setCategoryFormError(errorMessage);
-      }
+      sessionStorage.setItem(
+        "dashboard_category_success",
+        isEditCategoryPage ? "Category updated successfully." : "Category created successfully."
+      );
+    } catch (storageError) {
     }
+    window.location.href = "/admin-dashboard/dashboard/categories/";
+  } catch (error) {
+    const errorMessage = error.message || "Unable to save category.";
+    const mappedError = mapCategoryServerErrorToField(errorMessage);
+    if (mappedError) {
+      setCategoryFieldError(mappedError.field, mappedError.message);
+      setCategoryFormError("Please fix the highlighted error and try again.");
+    } else {
+      setCategoryFormError(errorMessage);
+    }
+  }
 });
 
+setCategoryModeText();
 bindCategoryLiveValidation();
 loadCategoryForEdit();
 </script>
-
-{% endblock %}
+</body>
+</html>

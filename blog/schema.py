@@ -224,6 +224,14 @@ class BlogImageType(DjangoObjectType):
         if request and hasattr(request, "build_absolute_uri"):
             return request.build_absolute_uri(self.image.url)
         return self.image.url
+
+
+class AdminBlogListType(DjangoObjectType):
+    class Meta:
+        model = Blog
+        fields = ("id", "title", "slug", "is_active", "author")
+
+
 class BlogType(DjangoObjectType):
     class Meta:
         model = Blog
@@ -787,7 +795,7 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
         search=graphene.String(required=False),
     )
     admin_blogs = graphene.List(
-        BlogType,
+        AdminBlogListType,
         is_active=graphene.Boolean(required=False),
         search=graphene.String(required=False),
         limit=graphene.Int(required=False),
@@ -870,8 +878,6 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
                 "title",
                 "slug",
                 "is_active",
-                "created_at",
-                "updated_at",
                 "author__id",
                 "author__username",
             )

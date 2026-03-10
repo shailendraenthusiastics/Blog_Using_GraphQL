@@ -1,47 +1,74 @@
-{% extends 'admin_dashboard/dashboard_base.html' %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blog Detail</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #e5e7eb; border-right: 1px solid #cbd5e1; padding: 20px 14px; }
+    .sidebar h2 { margin: 0 0 24px; font-size: 28px; color: #1f2937; }
+    .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 32px; margin: 14px 0; }
+    .nav-link.active { font-weight: 700; }
+    .content { flex: 1; padding: 20px 18px; }
+    .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .page-title { margin: 0; font-size: 52px; color: #0f172a; }
+    .btn { display: inline-block; border: 1px solid #2563eb; background: #fff; color: #2563eb; text-decoration: none; padding: 10px 16px; border-radius: 7px; font-size: 28px; cursor: pointer; }
+    .panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+    .message { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 22px; }
+    .message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .thumb { width: 120px; height: 80px; object-fit: cover; border-radius: 6px; background: #e5e7eb; }
+    .muted { color: #6b7280; font-size: 20px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>DASHBOARD</h2>
+      <a class="nav-link" href="/admin-dashboard/dashboard/">Home</a>
+      <a class="nav-link active" href="/admin-dashboard/dashboard/blogs/">Blogs</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/categories/">Categories</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/tags/">Tags</a>
+    </aside>
 
-{% block title %}Blog Detail{% endblock %}
+    <main class="content">
+      <div class="top-row">
+        <h1 class="page-title">Blog Detail</h1>
+        <a class="btn" href="/admin-dashboard/dashboard/blogs/">Back to Blogs</a>
+      </div>
 
-{% block content %}
-<div class="top-row">
-  <h1 class="page-title">Blog Detail</h1>
-  <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_blogs' %}">Back to Blogs</a>
-</div>
+      <div id="blogDetailError" class="message error" style="display:none; margin-bottom:10px;"></div>
 
-<div id="blogDetailError" class="message error" style="display:none; margin-bottom:10px;"></div>
-
-<div class="panel" style="padding:16px;">
-  <div id="featuredImageWrapper" style="margin-bottom:10px; display:none;">
-    <img id="featuredImage" class="thumb" style="width:220px;height:140px;" src="" alt="Featured Image" />
+      <div class="panel" style="padding:16px;">
+        <div id="featuredImageWrapper" style="margin-bottom:10px; display:none;">
+          <img id="featuredImage" class="thumb" style="width:220px;height:140px;" src="" alt="Featured Image" />
+        </div>
+        <p><strong>Title:</strong> <span id="blogTitle">-</span></p>
+        <p><strong>Slug:</strong> <span id="blogSlug">-</span></p>
+        <p><strong>Short Description:</strong> <span id="blogShortDescription">-</span></p>
+        <p><strong>Description:</strong> <span id="blogDescription">-</span></p>
+        <p><strong>Author:</strong> <span id="blogAuthor">-</span></p>
+        <p><strong>View Count:</strong> <span id="blogViewCount">0</span></p>
+        <p><strong>Status:</strong> <span id="blogStatus">-</span></p>
+        <p><strong>Created:</strong> <span id="blogCreated">-</span></p>
+        <p><strong>Updated:</strong> <span id="blogUpdated">-</span></p>
+        <p><strong>Gallery Images:</strong></p>
+        <div id="galleryImages" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;"></div>
+        <p><strong>Categories:</strong> <span id="blogCategories">-</span></p>
+        <p><strong>Tags:</strong> <span id="blogTags">-</span></p>
+      </div>
+    </main>
   </div>
-  <p><strong>Title:</strong> <span id="blogTitle">-</span></p>
-  <p><strong>Slug:</strong> <span id="blogSlug">-</span></p>
-  <p><strong>Short Description:</strong> <span id="blogShortDescription">-</span></p>
-  <p><strong>Description:</strong> <span id="blogDescription">-</span></p>
-  <p><strong>Author:</strong> <span id="blogAuthor">-</span></p>
-  <p><strong>View Count:</strong> <span id="blogViewCount">0</span></p>
-  <p><strong>Status:</strong> <span id="blogStatus">-</span></p>
-  <p><strong>Created:</strong> <span id="blogCreated">-</span></p>
-  <p><strong>Updated:</strong> <span id="blogUpdated">-</span></p>
-  <p><strong>Gallery Images:</strong></p>
-  <div id="galleryImages" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;"></div>
-  <p><strong>Categories:</strong> <span id="blogCategories">-</span></p>
-  <p><strong>Tags:</strong> <span id="blogTags">-</span></p>
-</div>
-
-<div id="blogDetailConfig" data-blog-id="{% if blog %}{{ blog.id }}{% endif %}"></div>
 
 <script>
-const blogDetailConfig = document.getElementById("blogDetailConfig");
-const initialBlogDetailId = blogDetailConfig && blogDetailConfig.dataset.blogId ? blogDetailConfig.dataset.blogId : null;
-
 function parseBlogIdFromPath() {
   const match = window.location.pathname.match(/\/blogs\/(\d+)\//);
   return match ? match[1] : null;
 }
 
 function getBlogId() {
-  return initialBlogDetailId || parseBlogIdFromPath();
+  return parseBlogIdFromPath();
 }
 
 function stripHtml(value) {
@@ -136,9 +163,9 @@ async function loadBlogDetail() {
     const data = await graphQLRequest(
       "query AdminBlogDetail($id: ID!) {"
       + " adminBlog(id: $id) {"
-      + " id title slug shortDescription description viewCount isActive createdAt updatedAt"
+      + " id title slug shortDescription description viewCount isActive updatedAt createdAt "
       + " featuredImage"
-      + " author { username  }"
+      + " author { username }"
       + " categories { id name }"
       + " tags { id name }"
       + " gallery { id image }"
@@ -168,7 +195,7 @@ async function loadBlogDetail() {
     document.getElementById("blogAuthor").textContent = authorName(blog.author);
     document.getElementById("blogViewCount").textContent = blog.viewCount || 0;
     document.getElementById("blogStatus").textContent = blog.isActive ? "Active" : "Inactive";
-    document.getElementById("blogCreated").textContent = formatDate(blog.createdAt);
+     document.getElementById("blogCreated").textContent = formatDate(blog.createdAt);
     document.getElementById("blogUpdated").textContent = formatDate(blog.updatedAt);
 
     const categoryNames = (blog.categories || []).map(function (item) { return item.name; });
@@ -185,4 +212,5 @@ async function loadBlogDetail() {
 
 loadBlogDetail();
 </script>
-{% endblock %}
+</body>
+</html>

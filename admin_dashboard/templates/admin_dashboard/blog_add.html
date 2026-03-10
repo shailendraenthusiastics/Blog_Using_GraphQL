@@ -1,117 +1,134 @@
-{% extends 'admin_dashboard/dashboard_base.html' %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blog</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #e5e7eb; border-right: 1px solid #cbd5e1; padding: 20px 14px; }
+    .sidebar h2 { margin: 0 0 24px; font-size: 28px; color: #1f2937; }
+    .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 32px; margin: 14px 0; }
+    .nav-link.active { font-weight: 700; }
+    .content { flex: 1; padding: 20px 18px; }
+    .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .page-title { margin: 0; font-size: 52px; color: #0f172a; }
+    .btn { display: inline-block; border: 1px solid #16a34a; background: #16a34a; color: #fff; text-decoration: none; padding: 10px 16px; border-radius: 7px; font-size: 28px; cursor: pointer; }
+    .btn.secondary { border-color: #2563eb; background: #fff; color: #2563eb; }
+    .panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+    .message { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 22px; }
+    .message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 24px; margin-bottom: 6px; }
+    .field input, .field textarea, .field select { width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 24px; box-sizing: border-box; }
+    .field textarea { min-height: 160px; resize: vertical; }
+    .muted { color: #6b7280; font-size: 20px; }
+    .actions { display: flex; gap: 10px; align-items: center; }
+    .field-error { display: none; margin-top: 6px; color: #b91c1c; font-size: 13px; line-height: 1.3; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>DASHBOARD</h2>
+      <a class="nav-link" href="/admin-dashboard/dashboard/">Home</a>
+      <a class="nav-link active" href="/admin-dashboard/dashboard/blogs/">Blogs</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/categories/">Categories</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/tags/">Tags</a>
+    </aside>
 
-{% block title %}{% if is_edit %}Edit Blog{% else %}Add Blog{% endif %}{% endblock %}
-
-{% block content %}
-<div class="top-row">
-  <h1 class="page-title">{% if is_edit %}Edit Blog{% else %}Add Blog{% endif %}</h1>
-  <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_blogs' %}">Back</a>
-</div>
-
-<div id="blogFormError" class="message error" style="display:none; margin-bottom:10px;"></div>
-
-<style>
-  .field-error {
-    display: none;
-    margin-top: 6px;
-    color: #b91c1c;
-    font-size: 13px;
-    line-height: 1.3;
-  }
-</style>
-
-<div class="panel" style="padding:16px;">
-  <form id="blogForm" enctype="multipart/form-data" novalidate>
-    <div class="field">
-      <label>Title</label>
-      <input type="text" id="title" name="title" required maxlength="150" />
-      <div id="title_error" class="field-error"></div>
-    </div>
-    <div class="field">
-      <label>Slug</label>
-      <input type="text" id="slug" name="slug" maxlength="150" />
-      <div class="muted">Leave blank to auto-generate from title</div>
-      <div id="slug_error" class="field-error"></div>
-    </div>
-    <div class="field">
-      <label>Short Description</label>
-      <input type="text" id="short_description" name="short_description" required maxlength="255" />
-      <div id="short_description_error" class="field-error"></div>
-    </div>
-    <div class="field">
-      <label>Description</label>
-      <textarea id="description_editor" name="description" required></textarea>
-      <div id="description_error" class="field-error"></div>
-    </div>
-    <div class="field">
-      <label>Author Name</label>
-      <input type="text" id="author_name" name="author_name" required maxlength="150" placeholder="Enter author name" />
-      <div id="author_name_error" class="field-error"></div>
-    </div>
-
-    <div class="field">
-      <label>Featured Image</label>
-      <input id="featured_image" type="file" name="featured_image" accept=".jpg,.jpeg,.png" />
-      <div id="featured_preview" style="margin-top:10px; display:none; position:relative; width:260px;">
-        <img id="featured_preview_img" src="" alt="Featured preview" style="width:260px; max-height:180px; border:1px solid #d1d5db; border-radius:6px; object-fit:cover;" />
-        <button type="button" id="remove_featured_image" style="position:absolute; top:6px; right:6px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:24px; height:24px; line-height:24px; font-size:14px; cursor:pointer;">x</button>
+    <main class="content">
+      <div class="top-row">
+        <h1 class="page-title" id="blogPageHeading">Add Blog</h1>
+        <a class="btn secondary" href="/admin-dashboard/dashboard/blogs/">Back</a>
       </div>
-      <div class="muted" id="featuredHelp">Upload JPG or PNG image (max 5 MB)</div>
-      <div id="featured_image_error" class="field-error"></div>
-    </div>
 
-    <div class="field" id="existingGallerySection" style="display:none;">
-      <label>Existing Gallery Images</label>
-      <div id="existing_gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+      <div id="blogFormError" class="message error" style="display:none; margin-bottom:10px;"></div>
+
+      <div class="panel" style="padding:16px;">
+        <form id="blogForm" enctype="multipart/form-data" novalidate>
+          <div class="field">
+            <label>Title</label>
+            <input type="text" id="title" name="title" required maxlength="150" />
+            <div id="title_error" class="field-error"></div>
+          </div>
+          <div class="field">
+            <label>Slug</label>
+            <input type="text" id="slug" name="slug" maxlength="150" />
+            <div class="muted">Leave blank to auto-generate from title</div>
+            <div id="slug_error" class="field-error"></div>
+          </div>
+          <div class="field">
+            <label>Short Description</label>
+            <input type="text" id="short_description" name="short_description" required maxlength="255" />
+            <div id="short_description_error" class="field-error"></div>
+          </div>
+          <div class="field">
+            <label>Description</label>
+            <textarea id="description_editor" name="description" required></textarea>
+            <div id="description_error" class="field-error"></div>
+          </div>
+          <div class="field">
+            <label>Author Name</label>
+            <input type="text" id="author_name" name="author_name" required maxlength="150" placeholder="Enter author name" />
+            <div id="author_name_error" class="field-error"></div>
+          </div>
+
+          <div class="field">
+            <label>Featured Image</label>
+            <input id="featured_image" type="file" name="featured_image" accept=".jpg,.jpeg,.png" />
+            <div id="featured_preview" style="margin-top:10px; display:none; position:relative; width:260px;">
+              <img id="featured_preview_img" src="" alt="Featured preview" style="width:260px; max-height:180px; border:1px solid #d1d5db; border-radius:6px; object-fit:cover;" />
+              <button type="button" id="remove_featured_image" style="position:absolute; top:6px; right:6px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:24px; height:24px; line-height:24px; font-size:14px; cursor:pointer;">x</button>
+            </div>
+            <div class="muted" id="featuredHelp">Upload JPG or PNG image (max 5 MB)</div>
+            <div id="featured_image_error" class="field-error"></div>
+          </div>
+
+          <div class="field" id="existingGallerySection" style="display:none;">
+            <label>Existing Gallery Images</label>
+            <div id="existing_gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+            <div class="muted">Click x on image to remove it in update</div>
+          </div>
+
+          <div class="field">
+            <label id="galleryLabel">Gallery Images</label>
+            <input id="gallery_images" type="file" name="gallery_images[]" accept=".jpg,.jpeg,.png" multiple />
+            <div class="muted">You can select multiple images</div>
+            <div id="gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+            <div id="gallery_images_error" class="field-error"></div>
+          </div>
+
+          <div class="field">
+            <label>Categories</label>
+            <select id="category_ids" name="category_ids" multiple required size="6"></select>
+            <div class="muted">Click one option, then click another to keep both selected</div>
+            <div id="category_ids_error" class="field-error"></div>
+          </div>
+
+          <div class="field">
+            <label>Tags</label>
+            <select id="tag_ids" name="tag_ids" multiple required size="6"></select>
+            <div class="muted">Click one option, then click another to keep both selected</div>
+            <div id="tag_ids_error" class="field-error"></div>
+          </div>
+
+          <div class="field">
+            <label><input type="checkbox" id="is_active" name="is_active" checked /> Active</label>
+          </div>
+
+          <div class="actions">
+            <button class="btn" id="submitButton" type="submit">Create Blog</button>
+          </div>
+        </form>
       </div>
-      <div class="muted">Click x on image to remove it in update</div>
-    </div>
-
-    <div class="field">
-      <label>{% if is_edit %}Add More Gallery Images{% else %}Gallery Images{% endif %}</label>
-      <input id="gallery_images" type="file" name="gallery_images[]" accept=".jpg,.jpeg,.png" multiple />
-      <div class="muted">You can select multiple images</div>
-      <div id="gallery_preview" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
-      <div id="gallery_images_error" class="field-error"></div>
-    </div>
-
-    <div class="field">
-      <label>Categories</label>
-      <select id="category_ids" name="category_ids" multiple required size="6">
-      </select>
-      <div class="muted">Click one option, then click another to keep both selected</div>
-      <div id="category_ids_error" class="field-error"></div>
-    </div>
-
-    <div class="field">
-      <label>Tags</label>
-      <select id="tag_ids" name="tag_ids" multiple required size="6">
-      </select>
-      <div class="muted">Click one option, then click another to keep both selected</div>
-      <div id="tag_ids_error" class="field-error"></div>
-    </div>
-
-    <div class="field">
-      <label><input type="checkbox" id="is_active" name="is_active" checked /> Active</label>
-    </div>
-
-    <div class="actions">
-      <button class="btn" id="submitButton" type="submit">{% if is_edit %}Update Blog{% else %}Create Blog{% endif %}</button>
-    </div>
-  </form>
-</div>
-
-<div
-  id="blogPageConfig"
-  data-is-edit="{% if is_edit %}true{% else %}false{% endif %}"
-  data-blog-id="{% if blog %}{{ blog.id }}{% endif %}"
-></div>
+    </main>
+  </div>
 
 <script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
 <script>
-const blogPageConfig = document.getElementById("blogPageConfig");
-const isEditBlogPage = Boolean(blogPageConfig && blogPageConfig.dataset.isEdit === "true");
-const initialBlogId = blogPageConfig && blogPageConfig.dataset.blogId ? blogPageConfig.dataset.blogId : null;
+const isEditBlogPage = /\/blogs\/\d+\/edit\/?$/.test(window.location.pathname);
 
 const blogForm = document.getElementById("blogForm");
 const submitButton = document.getElementById("submitButton");
@@ -154,7 +171,24 @@ function parseBlogIdFromPath() {
 }
 
 function getCurrentBlogId() {
-  return initialBlogId || parseBlogIdFromPath();
+  return parseBlogIdFromPath();
+}
+
+function setPageModeText() {
+  const heading = document.getElementById("blogPageHeading");
+  const galleryLabel = document.getElementById("galleryLabel");
+
+  if (isEditBlogPage) {
+    document.title = "Edit Blog";
+    heading.textContent = "Edit Blog";
+    submitButton.textContent = "Update Blog";
+    galleryLabel.textContent = "Add More Gallery Images";
+  } else {
+    document.title = "Add Blog";
+    heading.textContent = "Add Blog";
+    submitButton.textContent = "Create Blog";
+    galleryLabel.textContent = "Gallery Images";
+  }
 }
 
 function setBlogFormError(message) {
@@ -609,7 +643,7 @@ function renderExistingGallery(galleryItems) {
   existingGalleryPreview.innerHTML = galleryItems.map(function (item) {
     return ""
       + "<div class='existing-gallery-item' data-image-id='" + item.id + "' style='position:relative; width:120px; height:80px;'>"
-      + "<img class='thumb' src='" + item.image + "' alt='Existing gallery image' style='width:100%; height:100%;' />"
+      + "<img src='" + item.image + "' alt='Existing gallery image' style='width:100%; height:100%; object-fit:cover; border:1px solid #d1d5db; border-radius:6px;' />"
       + "<button type='button' class='remove-existing-gallery' data-image-id='" + item.id + "' style='position:absolute; top:4px; right:4px; background:#dc2626; color:#fff; border:none; border-radius:999px; width:22px; height:22px; line-height:22px; cursor:pointer;'>x</button>"
       + "</div>";
   }).join("");
@@ -637,7 +671,7 @@ function initializeEditor() {
   ClassicEditor
     .create(descriptionEditorElement, {
       ckfinder: {
-        uploadUrl: "{% url 'admin_dashboard:ckeditor_upload' %}"
+        uploadUrl: "/admin-dashboard/ckeditor/upload/"
       },
       toolbar: [
         "undo", "redo", "|",
@@ -941,7 +975,7 @@ blogForm.addEventListener("submit", async function (event) {
       );
     } catch (storageError) {
     }
-    window.location.href = "{% url 'admin_dashboard:dashboard_blogs' %}";
+    window.location.href = "/admin-dashboard/dashboard/blogs/";
   } catch (error) {
     const errorMessage = error.message || "Failed to save blog.";
     const mappedError = mapServerErrorToField(errorMessage);
@@ -959,7 +993,9 @@ blogForm.addEventListener("submit", async function (event) {
 enableClickMultiSelect("category_ids");
 enableClickMultiSelect("tag_ids");
 bindLiveValidation();
+setPageModeText();
 initializeEditor();
 loadInitialFormData();
 </script>
-{% endblock %}
+</body>
+</html>

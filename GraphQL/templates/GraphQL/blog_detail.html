@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ blog.title }}</title>
+  <title>Blog Detail</title>
   <style>
     body {
       margin: 0;
@@ -94,52 +94,28 @@
 <body>
   <div class="container">
     <div class="top-row">
-      <h1 class="page-title">{{ blog.title }}</h1>
-      <a class="back-btn" href="{% url 'blog_list' %}">Back to Blogs</a>
+      <h1 class="page-title" id="detailTitle">Blog Detail</h1>
+      <a class="back-btn" href="/blogs/">Back to Blogs</a>
     </div>
 
     <div class="panel">
-      {% if blog.featured_image %}
-        <img class="featured-image" src="{{ blog.featured_image.url }}" alt="{{ blog.title }}" />
-      {% endif %}
+      <img id="detailFeaturedImage" class="featured-image" src="" alt="Featured image" style="display:none;" />
 
       <div class="content">
-        <p class="meta"><span class="meta-label">Short Description:</span> {{ blog.short_description|default:"-" }}</p>
-        <p class="meta"><span class="meta-label">Slug:</span> {{ blog.slug }}</p>
-        <p class="meta"><span class="meta-label">Author:</span> {{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</p>
-        <p class="meta">
-          <span class="meta-label">Categories:</span>
-          {% for category in blog.categories.all %}
-            {{ category.name }}{% if not forloop.last %}, {% endif %}
-          {% empty %}
-            -
-          {% endfor %}
-        </p>
-        <p class="meta">
-          <span class="meta-label">Tags:</span>
-          {% for tag in blog.tags.all %}
-            {{ tag.name }}{% if not forloop.last %}, {% endif %}
-          {% empty %}
-            -
-          {% endfor %}
-        </p>
-        <p class="meta"><span class="meta-label">Views:</span> <span id="detail-view-count">{{ blog.view_count }}</span></p>
+        <p class="meta"><span class="meta-label">Short Description:</span> <span id="detailShortDescription">-</span></p>
+        <p class="meta"><span class="meta-label">Slug:</span> <span id="detailSlug">-</span></p>
+        <p class="meta"><span class="meta-label">Author:</span> <span id="detailAuthor">Unknown</span></p>
+        <p class="meta"><span class="meta-label">Categories:</span> <span id="detailCategories">-</span></p>
+        <p class="meta"><span class="meta-label">Tags:</span> <span id="detailTags">-</span></p>
+        <p class="meta"><span class="meta-label">Views:</span> <span id="detail-view-count">0</span></p>
 
         <div class="description">
           <p class="meta"><span class="meta-label">Description:</span></p>
-          <div>{{ blog.description|safe }}</div>
+          <div id="detailDescription">-</div>
         </div>
 
         <h2 class="gallery-title">Gallery Images</h2>
-        {% if blog.gallery.all %}
-          <div class="gallery-grid">
-            {% for image in blog.gallery.all %}
-              <img class="gallery-image" src="{{ image.image.url }}" alt="{{ blog.title }} gallery" />
-            {% endfor %}
-          </div>
-        {% else %}
-          <p class="muted">No gallery images available.</p>
-        {% endif %}
+        <div id="galleryRoot"><p class="muted">No gallery images available.</p></div>
       </div>
     </div>
   </div>
@@ -147,8 +123,70 @@
   <script>
     (function () {
       const storageKey = 'frontend_blog_view_counts';
-      const endpoint = "{% url 'increment_blog_view' blog.slug %}";
+      const detailTitle = document.getElementById('detailTitle');
+      const detailFeaturedImage = document.getElementById('detailFeaturedImage');
+      const detailShortDescription = document.getElementById('detailShortDescription');
+      const detailSlug = document.getElementById('detailSlug');
+      const detailAuthor = document.getElementById('detailAuthor');
+      const detailCategories = document.getElementById('detailCategories');
+      const detailTags = document.getElementById('detailTags');
       const detailViewCountElement = document.getElementById('detail-view-count');
+      const detailDescription = document.getElementById('detailDescription');
+      const galleryRoot = document.getElementById('galleryRoot');
+
+      function parseSlugFromPath() {
+        const match = window.location.pathname.match(/^\/blogs\/([^/]+)\/?$/);
+        return match ? decodeURIComponent(match[1]) : '';
+      }
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function authorName(author) {
+        if (!author) {
+          return 'Unknown';
+        }
+        const firstName = String(author.firstName || '').trim();
+        const username = String(author.username || '').trim();
+        return firstName || username || 'Unknown';
+      }
+
+      function joinNames(items) {
+        if (!items || !items.length) {
+          return '-';
+        }
+        return items
+          .map(function (item) { return item && item.name ? item.name : ''; })
+          .filter(Boolean)
+          .join(', ') || '-';
+      }
+
+      async function graphQLRequest(query, variables) {
+        const response = await fetch('/graphql/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({ query: query, variables: variables || {} })
+        });
+
+        const payload = await response.json();
+        if (!response.ok || (payload.errors && payload.errors.length)) {
+          const message = payload.errors && payload.errors.length
+            ? payload.errors.map(function (item) { return item.message; }).join(' | ')
+            : 'Failed to load blog detail.';
+          throw new Error(message);
+        }
+
+        return payload.data;
+      }
 
       function readStoredCounts() {
         const raw = localStorage.getItem(storageKey);
@@ -168,31 +206,100 @@
         localStorage.setItem(storageKey, JSON.stringify(counts));
       }
 
-      function incrementViewCount() {
-        fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-          }
-        })
-          .then(function (response) {
-            return response.json();
-          })
-          .then(function (data) {
-            if (!data || typeof data.view_count === 'undefined') {
-              return;
-            }
-            if (detailViewCountElement) {
-              detailViewCountElement.textContent = data.view_count;
-            }
-            if (typeof data.blog_id !== 'undefined') {
-              saveCount(data.blog_id, data.view_count);
-            }
-          })
-          .catch(function () {});
+      function renderGallery(gallery, blogTitle) {
+        if (!gallery || !gallery.length) {
+          galleryRoot.innerHTML = '<p class="muted">No gallery images available.</p>';
+          return;
+        }
+
+        const galleryHtml = gallery.map(function (image) {
+          return '<img class="gallery-image" src="' + escapeHtml(image.image || '') + '" alt="' + escapeHtml(blogTitle || 'Blog') + ' gallery" />';
+        }).join('');
+
+        galleryRoot.innerHTML = '<div class="gallery-grid">' + galleryHtml + '</div>';
       }
 
-      incrementViewCount();
+      async function incrementViewCount(slug, blogId) {
+        const endpoint = '/blogs/' + encodeURIComponent(slug) + '/increment-view/';
+
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest'
+            }
+          });
+          const data = await response.json();
+
+          if (!data || typeof data.view_count === 'undefined') {
+            return;
+          }
+
+          detailViewCountElement.textContent = data.view_count;
+          if (typeof data.blog_id !== 'undefined') {
+            saveCount(data.blog_id, data.view_count);
+          } else if (typeof blogId !== 'undefined') {
+            saveCount(blogId, data.view_count);
+          }
+        } catch (error) {
+        }
+      }
+
+      async function loadDetail() {
+        const slug = parseSlugFromPath();
+        if (!slug) {
+          detailTitle.textContent = 'Blog not found';
+          detailDescription.textContent = 'Invalid blog URL.';
+          return;
+        }
+
+        try {
+          const data = await graphQLRequest(
+            'query PublicBlogDetail($slug: String!) {'
+            + ' blogEntry: blog(slug: $slug) {'
+            + ' id title slug shortDescription description viewCount featuredImage'
+            + ' author { username firstName }'
+            + ' categories { name }'
+            + ' tags { name }'
+            + ' gallery { image }'
+            + ' }'
+            + ' }',
+            { slug: slug }
+          );
+
+          const blog = data && data.blogEntry ? data.blogEntry : null;
+          if (!blog) {
+            throw new Error('Blog not found.');
+          }
+
+          detailTitle.textContent = blog.title || 'Blog Detail';
+          document.title = blog.title || 'Blog Detail';
+          detailShortDescription.textContent = blog.shortDescription || '-';
+          detailSlug.textContent = blog.slug || '-';
+          detailAuthor.textContent = authorName(blog.author);
+          detailCategories.textContent = joinNames(blog.categories);
+          detailTags.textContent = joinNames(blog.tags);
+          detailViewCountElement.textContent = blog.viewCount || 0;
+
+          detailDescription.innerHTML = blog.description || '-';
+
+          if (blog.featuredImage) {
+            detailFeaturedImage.src = blog.featuredImage;
+            detailFeaturedImage.alt = blog.title || 'Featured image';
+            detailFeaturedImage.style.display = 'block';
+          } else {
+            detailFeaturedImage.style.display = 'none';
+          }
+
+          renderGallery(blog.gallery || [], blog.title || 'Blog');
+          incrementViewCount(slug, blog.id);
+        } catch (error) {
+          detailTitle.textContent = 'Blog not found';
+          detailDescription.textContent = error.message || 'Failed to load blog detail.';
+        }
+      }
+
+      loadDetail();
     })();
   </script>
 </body>

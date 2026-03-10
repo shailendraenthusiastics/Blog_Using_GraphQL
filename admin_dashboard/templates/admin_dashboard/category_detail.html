@@ -1,54 +1,82 @@
-{% extends 'admin_dashboard/dashboard_base.html' %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Category Detail</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #e5e7eb; border-right: 1px solid #cbd5e1; padding: 20px 14px; }
+    .sidebar h2 { margin: 0 0 24px; font-size: 28px; color: #1f2937; }
+    .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 32px; margin: 14px 0; }
+    .nav-link.active { font-weight: 700; }
+    .content { flex: 1; padding: 20px 18px; }
+    .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .page-title { margin: 0; font-size: 52px; color: #0f172a; }
+    .btn { display: inline-block; border: 1px solid #2563eb; background: #fff; color: #2563eb; text-decoration: none; padding: 10px 16px; border-radius: 7px; font-size: 28px; cursor: pointer; }
+    .panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1f2937; color: #fff; text-align: left; padding: 12px; font-size: 24px; }
+    td { padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 28px; vertical-align: top; }
+    .message { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 22px; }
+    .message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .muted { color: #6b7280; font-size: 20px; }
+    .link-btn { color: #2563eb; text-decoration: none; font-size: 24px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>DASHBOARD</h2>
+      <a class="nav-link" href="/admin-dashboard/dashboard/">Home</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/blogs/">Blogs</a>
+      <a class="nav-link active" href="/admin-dashboard/dashboard/categories/">Categories</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/tags/">Tags</a>
+    </aside>
 
-{% block title %}Category Detail{% endblock %}
+    <main class="content">
+      <div class="top-row">
+        <h1 class="page-title">Category Detail</h1>
+        <a class="btn" href="/admin-dashboard/dashboard/categories/">Back to Categories</a>
+      </div>
 
-{% block content %}
-<div class="top-row">
-  <h1 class="page-title">Category Detail</h1>
-  <a class="btn secondary" href="{% url 'admin_dashboard:dashboard_categories' %}">Back to Categories</a>
-</div>
+      <div id="categoryDetailError" class="message error" style="display:none; margin-bottom:10px;"></div>
 
-<div id="categoryDetailError" class="message error" style="display:none; margin-bottom:10px;"></div>
+      <div class="panel" style="padding:16px; margin-bottom:14px;">
+        <p><strong>Name:</strong> <span id="categoryName">-</span></p>
+        <p><strong>Slug:</strong> <span id="categorySlug">-</span></p>
+        <p><strong>Status:</strong> <span id="categoryStatus">-</span></p>
+        <p><strong>Created:</strong> <span id="categoryCreated">-</span></p>
+        <p><strong>Updated:</strong> <span id="categoryUpdated">-</span></p>
+      </div>
 
-<div class="panel" style="padding:16px; margin-bottom:14px;">
-  <p><strong>Name:</strong> <span id="categoryName">-</span></p>
-  <p><strong>Slug:</strong> <span id="categorySlug">-</span></p>
-  <p><strong>Status:</strong> <span id="categoryStatus">-</span></p>
-  <p><strong>Created:</strong> <span id="categoryCreated">-</span></p>
-  <p><strong>Updated:</strong> <span id="categoryUpdated">-</span></p>
-</div>
-
-<div class="panel">
-  <table>
-    <thead>
-      <tr>
-        <th>S.No</th>
-        <th>Blog Title</th>
-        <th>Author</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody id="categoryBlogRows">
-      <tr><td colspan="4" class="muted">Loading...</td></tr>
-    </tbody>
-  </table>
-</div>
-
-<div id="categoryDetailConfig" data-category-id="{% if category %}{{ category.id }}{% endif %}"></div>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr>
+              <th>S.No</th>
+              <th>Blog Title</th>
+              <th>Author</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="categoryBlogRows">
+            <tr><td colspan="4" class="muted">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
 
 <script>
-const categoryDetailConfig = document.getElementById("categoryDetailConfig");
-const initialCategoryDetailId = categoryDetailConfig && categoryDetailConfig.dataset.categoryId
-  ? categoryDetailConfig.dataset.categoryId
-  : null;
-
 function parseCategoryIdFromPath() {
   const match = window.location.pathname.match(/\/categories\/(\d+)\//);
   return match ? match[1] : null;
 }
 
 function currentCategoryId() {
-  return initialCategoryDetailId || parseCategoryIdFromPath();
+  return parseCategoryIdFromPath();
 }
 
 function escapeHtml(value) {
@@ -185,4 +213,5 @@ async function loadCategoryDetail() {
 
 loadCategoryDetail();
 </script>
-{% endblock %}
+</body>
+</html>

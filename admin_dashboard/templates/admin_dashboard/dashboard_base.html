@@ -3,92 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}Dashboard{% endblock %}</title>
+  <title>Dashboard Base</title>
   <style>
     body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; }
     .layout { display: flex; min-height: 100vh; }
     .sidebar { width: 240px; background: #e5e7eb; border-right: 1px solid #cbd5e1; padding: 20px 14px; }
     .sidebar h2 { margin: 0 0 24px; font-size: 28px; color: #1f2937; }
     .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 32px; margin: 14px 0; }
-    .nav-link.active { font-weight: 700; }
     .content { flex: 1; padding: 20px 18px; }
-    .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-    .page-title { margin: 0; font-size: 52px; color: #0f172a; }
-    .btn { display: inline-block; border: 1px solid #16a34a; background: #16a34a; color: #fff; text-decoration: none; padding: 10px 16px; border-radius: 7px; font-size: 28px; cursor: pointer; }
-    .btn.secondary { border-color: #2563eb; background: #fff; color: #2563eb; }
-    .panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #1f2937; color: #fff; text-align: left; padding: 12px; font-size: 24px; }
-    td { padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 28px; vertical-align: top; }
-    .tag { display: inline-block; border-radius: 999px; font-size: 20px; padding: 5px 12px; color: #fff; }
-    .tag.active { background: #16a34a; }
-    .tag.inactive { background: #64748b; }
-    .thumb { width: 120px; height: 80px; object-fit: cover; border-radius: 6px; background: #e5e7eb; }
-    .messages { margin-bottom: 14px; }
-    .message { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 22px; }
-    .message.success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
-    .message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-    .field { margin-bottom: 14px; }
-    .field label { display: block; font-size: 24px; margin-bottom: 6px; }
-    .field input, .field textarea, .field select { width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 24px; box-sizing: border-box; }
-    .field textarea { min-height: 160px; resize: vertical; }
+    .panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 20px; }
     .muted { color: #6b7280; font-size: 20px; }
-    .actions { display: flex; gap: 10px; align-items: center; }
-    .link-btn { color: #2563eb; text-decoration: none; font-size: 24px; }
-    .action-row { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; white-space: nowrap; }
-    .action-row form { margin: 0; }
-    .action-btn { background: none; border: none; color: #dc2626; cursor: pointer; font-size: 24px; padding: 0; }
-    .home-stats { display: flex; justify-content: space-between; gap: 14px; text-align: center; }
-    .home-card { flex: 1; border-radius: 10px; padding: 18px 12px; color: #fff; }
-    .home-card .label { font-size: 30px; font-weight: 700; margin-bottom: 10px; }
-    .home-card .value { font-size: 38px; font-weight: 700; }
-    .home-card.blog { background: #1d4ed8; }
-    .home-card.tag { background: #16a34a; }
-    .home-card.category { background: #f59e0b; }
-    .filter-row { display: flex; gap: 10px; align-items: center; margin: 0 0 14px; }
-    .filter-row select { width: auto; min-width: 160px; }
-    .filter-links { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    .chip-link {
-      min-width: 38px;
-      height: 36px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      padding: 0 12px;
-      text-decoration: none;
-      color: #1f2937;
-      font-size: 18px;
-      background: #fff;
-      box-sizing: border-box;
-    }
-    .chip-link:hover { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
-    .chip-link.active { border-color: #2563eb; background: #2563eb; color: #fff; font-weight: 700; pointer-events: none; }
-    .chip-link.nav { font-weight: 700; }
   </style>
 </head>
 <body>
   <div class="layout">
     <aside class="sidebar">
       <h2>DASHBOARD</h2>
-      <a class="nav-link {% if active_menu == 'home' %}active{% endif %}" href="{% url 'admin_dashboard:dashboard_home' %}">Home</a>
-      <a class="nav-link {% if active_menu == 'blogs' %}active{% endif %}" href="{% url 'admin_dashboard:dashboard_blogs' %}">Blogs</a>
-      <a class="nav-link {% if active_menu == 'categories' %}active{% endif %}" href="{% url 'admin_dashboard:dashboard_categories' %}">Categories</a>
-      <a class="nav-link {% if active_menu == 'tags' %}active{% endif %}" href="{% url 'admin_dashboard:dashboard_tags' %}">Tags</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/">Home</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/blogs/">Blogs</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/categories/">Categories</a>
+      <a class="nav-link" href="/admin-dashboard/dashboard/tags/">Tags</a>
     </aside>
+
     <main class="content">
-      {% if messages %}
-      <div class="messages">
-        {% for message in messages %}
-          <div class="message {% if message.tags == 'success' %}success{% else %}error{% endif %}">{{ message }}</div>
-        {% endfor %}
+      <div class="panel">
+        <p class="muted">Static base scaffold for admin dashboard pages.</p>
       </div>
-      {% endif %}
-      {% block content %}
-      <h1>{{ blog.title }}</h1>
-      <p>By: {{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</p>
-      {% endblock %}
     </main>
   </div>
 </body>

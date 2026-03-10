@@ -105,61 +105,43 @@
 <body>
   <div class="container">
     <h1 class="page-title">Active Blogs</h1>
-
-    {% if blogs %}
-      <div class="blog-grid">
-        {% for blog in blogs %}
-          <article class="blog-card">
-            <a class="image-link" href="{% url 'blog_detail' blog.slug %}">
-              {% if blog.featured_image %}
-                <img class="featured-image" src="{{ blog.featured_image.url }}" alt="{{ blog.title }}" />
-              {% else %}
-                <div class="image-placeholder">No featured image</div>
-              {% endif %}
-            </a>
-
-            <div class="card-content">
-              <h2 class="blog-title">{{ blog.title }}</h2>
-              <p class="short-desc">{{ blog.short_description|default:"-" }}</p>
-              <p class="meta"><span class="meta-label">Author:</span> {{ blog.author.get_full_name|default:blog.author.username|default:"Unknown" }}</p>
-
-              <p class="meta">
-                <span class="meta-label">Categories:</span>
-                {% for category in blog.categories.all %}
-                  {{ category.name }}{% if not forloop.last %}, {% endif %}
-                {% empty %}
-                  -
-                {% endfor %}
-              </p>
-
-              <p class="meta">
-                <span class="meta-label">Tags:</span>
-                {% for tag in blog.tags.all %}
-                  {{ tag.name }}{% if not forloop.last %}, {% endif %}
-                {% empty %}
-                  -
-                {% endfor %}
-              </p>
-
-              <div class="actions">
-                <div class="views">
-                  Views:
-                  <span class="blog-view-count" data-blog-id="{{ blog.id }}">{{ blog.view_count }}</span>
-                </div>
-                <a class="view-btn" href="{% url 'blog_detail' blog.slug %}">View</a>
-              </div>
-            </div>
-          </article>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="empty">No active blogs available.</p>
-    {% endif %}
+    <div id="blogListRoot">
+      <p class="empty">Loading active blogs...</p>
+    </div>
   </div>
 
   <script>
     (function () {
       const storageKey = 'frontend_blog_view_counts';
+      const listRoot = document.getElementById('blogListRoot');
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function authorName(author) {
+        if (!author) {
+          return 'Unknown';
+        }
+        const firstName = String(author.firstName || '').trim();
+        const username = String(author.username || '').trim();
+        return firstName || username || 'Unknown';
+      }
+
+      function joinNames(items) {
+        if (!items || !items.length) {
+          return '-';
+        }
+        return items
+          .map(function (item) { return item && item.name ? item.name : ''; })
+          .filter(Boolean)
+          .join(', ') || '-';
+      }
 
       function readStoredCounts() {
         const raw = localStorage.getItem(storageKey);
@@ -184,13 +166,88 @@
         });
       }
 
+      async function graphQLRequest(query, variables) {
+        const response = await fetch('/graphql/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({ query: query, variables: variables || {} })
+        });
+
+        const payload = await response.json();
+        if (!response.ok || (payload.errors && payload.errors.length)) {
+          const message = payload.errors && payload.errors.length
+            ? payload.errors.map(function (item) { return item.message; }).join(' | ')
+            : 'Failed to load blogs.';
+          throw new Error(message);
+        }
+
+        return payload.data;
+      }
+
+      function renderBlogs(blogs) {
+        if (!blogs.length) {
+          listRoot.innerHTML = '<p class="empty">No active blogs available.</p>';
+          return;
+        }
+
+        const cards = blogs.map(function (blog) {
+          const detailUrl = '/blogs/' + encodeURIComponent(blog.slug || '') + '/';
+          const featuredBlock = blog.featuredImage
+            ? '<img class="featured-image" src="' + escapeHtml(blog.featuredImage) + '" alt="' + escapeHtml(blog.title || 'Blog image') + '" />'
+            : '<div class="image-placeholder">No featured image</div>';
+
+          return ''
+            + '<article class="blog-card">'
+            + '  <a class="image-link" href="' + detailUrl + '">' + featuredBlock + '</a>'
+            + '  <div class="card-content">'
+            + '    <h2 class="blog-title">' + escapeHtml(blog.title || '-') + '</h2>'
+            + '    <p class="short-desc">' + escapeHtml(blog.shortDescription || '-') + '</p>'
+            + '    <p class="meta"><span class="meta-label">Author:</span> ' + escapeHtml(authorName(blog.author)) + '</p>'
+            + '    <p class="meta"><span class="meta-label">Categories:</span> ' + escapeHtml(joinNames(blog.categories)) + '</p>'
+            + '    <p class="meta"><span class="meta-label">Tags:</span> ' + escapeHtml(joinNames(blog.tags)) + '</p>'
+            + '    <div class="actions">'
+            + '      <div class="views">Views: <span class="blog-view-count" data-blog-id="' + escapeHtml(blog.id) + '">' + escapeHtml(blog.viewCount || 0) + '</span></div>'
+            + '      <a class="view-btn" href="' + detailUrl + '">View</a>'
+            + '    </div>'
+            + '  </div>'
+            + '</article>';
+        }).join('');
+
+        listRoot.innerHTML = '<div class="blog-grid">' + cards + '</div>';
+      }
+
+      async function loadBlogs() {
+        try {
+          const data = await graphQLRequest(
+            'query PublicBlogList($limit: Int) {'
+            + ' blogFeed: blogs(isActive: true, limit: $limit) {'
+            + ' id title slug shortDescription viewCount featuredImage'
+            + ' author { username firstName }'
+            + ' categories { name }'
+            + ' tags { name }'
+            + ' }'
+            + ' }',
+            { limit: 100 }
+          );
+
+          const blogs = data && data.blogFeed ? data.blogFeed : [];
+          renderBlogs(blogs);
+          applyStoredCounts();
+        } catch (error) {
+          listRoot.innerHTML = '<p class="empty">' + escapeHtml(error.message || 'Failed to load blogs.') + '</p>';
+        }
+      }
+
       window.addEventListener('storage', function (event) {
         if (event.key === storageKey) {
           applyStoredCounts();
         }
       });
 
-      applyStoredCounts();
+      loadBlogs();
     })();
   </script>
 </body>
