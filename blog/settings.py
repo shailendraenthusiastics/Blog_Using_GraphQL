@@ -11,8 +11,8 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
-import django.utils.translation
-from django.utils.translation import gettext, gettext_lazy
+#import django.utils.translation
+#from django.utils.translation import gettext, gettext_lazy
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'graphql_auth',
     'django_filters',
     'graphql_jwt.refresh_token.apps.RefreshTokenConfig',
+    'graphene_graphiql_explorer',
 ]
 
 MIDDLEWARE = [

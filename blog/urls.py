@@ -27,6 +27,7 @@ from GraphQL.views import (
     increment_blog_view,
     upload_blog_images,
 )
+from graphene_django.views import GraphQLView
 
 
 urlpatterns = [
@@ -35,9 +36,10 @@ urlpatterns = [
     path("blogs/<slug:slug>/increment-view/", increment_blog_view, name="increment_blog_view"),
     path("admin-dashboard/", include("admin_dashboard.urls")),
     path("admin/", admin.site.urls),
-    path("graphql/", csrf_exempt(CustomGraphQLView.as_view(graphiql=True))),
+    #path("graphql/", csrf_exempt(CustomGraphQLView.as_view(graphiql=True))),
+    path("graphql/", csrf_exempt(GraphQLView.as_view(graphiql=True))),
     path("api/upload-images/", upload_blog_images),
 ]
-
+GraphQLView.graphiql_template = "graphene_graphiql_explorer/graphiql.html"
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

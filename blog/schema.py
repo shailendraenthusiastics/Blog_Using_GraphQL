@@ -229,7 +229,7 @@ class BlogImageType(DjangoObjectType):
 class AdminBlogListType(DjangoObjectType):
     class Meta:
         model = Blog
-        fields = ("id", "title", "slug", "is_active", "author")
+        fields = ("id", "title", "slug", "is_active", "author", "created_at", "updated_at")
 
 
 class BlogType(DjangoObjectType):
@@ -806,6 +806,7 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
     category = graphene.Field(BlogCategoryType, id=graphene.ID(required=True))
 
     tags = graphene.List(BlogTagType, is_active=graphene.Boolean())
+
     tag = graphene.Field(BlogTagType, id=graphene.ID(required=True))
 
     blogs = graphene.List(
@@ -878,6 +879,8 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
                 "title",
                 "slug",
                 "is_active",
+                "created_at",
+                "updated_at",
                 "author__id",
                 "author__username",
             )
@@ -942,8 +945,8 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
                 "slug",
                 "short_description",
                 "view_count",
-                "created_at",
-                "updated_at",
+                # "created_at",
+                # "updated_at",
                 "author__id",
                 "author__username",
                 "author__first_name",

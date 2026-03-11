@@ -8,21 +8,21 @@
     body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; }
     .layout { display: flex; min-height: 100vh; }
     .sidebar { width: 240px; background: #e5e7eb; border-right: 1px solid #cbd5e1; padding: 20px 14px; }
-    .sidebar h2 { margin: 0 0 24px; font-size: 28px; color: #1f2937; }
-    .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 32px; margin: 14px 0; }
-    .nav-link.active { font-weight: 700; }
+    .sidebar h2 { margin: 0 0 24px; font-size: 15px; color: #1f2937; }
+    .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 20px; margin: 14px 0; }
+    .nav-link.active { font-weight: 400; }
     .content { flex: 1; padding: 20px 18px; }
     .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-    .page-title { margin: 0; font-size: 52px; color: #0f172a; }
-    .btn { display: inline-block; border: 1px solid #2563eb; background: #fff; color: #2563eb; text-decoration: none; padding: 10px 16px; border-radius: 7px; font-size: 28px; cursor: pointer; }
+    .page-title { margin: 0; font-size: 25px; color: #0f172a; }
+    .btn { display: inline-block; border: 1px solid #2563eb; background: #fff; color: #2563eb; text-decoration: none; padding: 10px 16px; border-radius: 7px; font-size: 15px; cursor: pointer; }
     .panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
     table { width: 100%; border-collapse: collapse; }
-    th { background: #1f2937; color: #fff; text-align: left; padding: 12px; font-size: 24px; }
-    td { padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 28px; vertical-align: top; }
-    .message { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 22px; }
+    th { background: #1f2937; color: #fff; text-align: left; padding: 12px; font-size: 15px; }
+    td { padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 15px; vertical-align: top; }
+    .message { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 15px; }
     .message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-    .muted { color: #6b7280; font-size: 20px; }
-    .link-btn { color: #2563eb; text-decoration: none; font-size: 24px; }
+    .muted { color: #6b7280; font-size: 15px; }
+    .link-btn { color: #2563eb; text-decoration: none; font-size: 15px; }
   </style>
 </head>
 <body>
@@ -159,7 +159,7 @@ function renderRelatedBlogs(blogs) {
     return ""
       + "<tr>"
       + "<td>" + (index + 1) + "</td>"
-      + "<td><a class='link-btn' href='/admin-dashboard/dashboard/blogs/" + blog.id + "/'>" + escapeHtml(blog.title || "-") + "</a></td>"
+      + "<td>" + escapeHtml(blog.title || "-") + "</td>"
       + "<td>" + escapeHtml(authorName(blog.author)) + "</td>"
       + "<td>" + statusText + "</td>"
       + "</tr>";
