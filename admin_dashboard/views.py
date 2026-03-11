@@ -334,6 +334,12 @@ def dashboard_tag_delete(request, tag_id):
 
 @login_required(login_url=DASHBOARD_LOGIN_URL)
 @user_passes_test(_is_superuser, login_url=DASHBOARD_LOGIN_URL)
+def chart_view(request):
+    return render(request, 'admin_dashboard/charts.html', {'active_menu': 'charts'})
+
+
+@login_required(login_url=DASHBOARD_LOGIN_URL)
+@user_passes_test(_is_superuser, login_url=DASHBOARD_LOGIN_URL)
 def blog_edit(request, pk):
     blog = get_object_or_404(Blog.objects.only("id"), pk=pk, is_deleted=False)
 

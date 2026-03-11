@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Analytics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <style>
+            body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; background: #f3f4f6; }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 240px; background: #e5e7eb; border-right: 1px solid #cbd5e1; padding: 20px 14px; flex-shrink: 0; }
+        .sidebar h2 { margin: 0 0 24px; font-size: 15px; color: #1f2937; }
+        .nav-link { display: block; color: #2563eb; text-decoration: none; font-size: 20px; margin: 14px 0; }
+        .nav-link.active { font-weight: 400; }
+        .content { flex: 1; padding: 20px; }
+        .dashboard-container { max-width: 1200px; margin: 0 auto; }
+        .header-panel { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; }
+        .header-panel h1 { margin: 0; font-size: 20px; color: #1f2937; }
+        
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; }
+        .chart-card { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .chart-card h3 { margin: 0 0 20px 0; font-size: 16px; color: #374151; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px; }
+
+        .status-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .status-pill { border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #d1d5db; background: #f9fafb; }
+        .status-pill .label { display: block; font-size: 13px; color: #4b5563; }
+        .status-pill .value { display: block; font-size: 20px; font-weight: 600; color: #111827; line-height: 1.2; margin-top: 2px; }
+        .status-pill.total { background: #dbeafe; border-color: #93c5fd; }
+        .status-pill.active { background: #dcfce7; border-color: #86efac; }
+        .status-pill.inactive { background: #fee2e2; border-color: #fca5a5; }
+        
+        .canvas-container { position: relative; height: 300px; width: 100%; }
+        .muted { color: #6b7280; font-size: 14px; }
+
+        @media (max-width: 640px) {
+            .status-counts { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <h2>DASHBOARD</h2>
+    <a class="nav-link" href="/admin-dashboard/dashboard/">Home</a>
+    <a class="nav-link" href="/admin-dashboard/dashboard/blogs/">Blogs</a>
+    <a class="nav-link" href="/admin-dashboard/dashboard/categories/">Categories</a>
+    <a class="nav-link" href="/admin-dashboard/dashboard/tags/">Tags</a>
+    <a class="nav-link active" href="/admin-dashboard/dashboard/charts/">Analytics Charts</a>
+  </aside>
+  <div class="content">
+<div class="dashboard-container">
+    <div class="header-panel">
+        <h1>Blog Analytics Overview</h1>
+        <p class="muted">Live data from GraphQL API</p>
+    </div>
+
+    <div class="charts-grid">
+        <div class="chart-card">
+            <h3>Blog Status Distribution (Pie Chart)</h3>
+            <div class="status-counts" id="statusCounts">
+                <div class="status-pill total">
+                    <span class="label">Total</span>
+                    <span class="value" id="totalBlogsCount">0</span>
+                </div>
+                <div class="status-pill active">
+                    <span class="label">Active</span>
+                    <span class="value" id="activeBlogsCount">0</span>
+                </div>
+                <div class="status-pill inactive">
+                    <span class="label">Inactive</span>
+                    <span class="value" id="inactiveBlogsCount">0</span>
+                </div>
+            </div>
+            <div class="canvas-container">
+                <canvas id="statusPieChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>Blogs Count by Author (Bar Chart)</h3>
+            <div class="canvas-container">
+                <canvas id="authorBarChart"></canvas>
+            </div>
+        </div>
+    </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    $(document).ready(function() {
+        const GQL_QUERY = {
+            query: `
+                query {
+                    getDashboardCharts {
+                        blogStatusStats {
+                            status
+                            count
+                        }
+                        authorBlogStats {
+                            authorName
+                            blogCount
+                        }
+                    }
+                }
+            `
+        };
+        $.ajax({
+            url: '/graphql/', 
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {
+                "X-CSRFToken": getCookie('csrftoken') 
+            },
+            data: JSON.stringify(GQL_QUERY),
+            success: function(response) {
+                if (response.data && response.data.getDashboardCharts) {
+                    const stats = response.data.getDashboardCharts;
+                    const statusSummary = getStatusSummary(stats.blogStatusStats);
+                    updateStatusCounts(statusSummary);
+                    renderPieChart(statusSummary);
+                    renderBarChart(stats.authorBlogStats);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error("GraphQL Fetch Error:", error);
+            }
+        });
+
+        function getStatusSummary(data) {
+            const summary = { active: 0, inactive: 0, total: 0 };
+
+            (data || []).forEach(item => {
+                const key = String(item.status || '').trim().toLowerCase();
+                const count = Number(item.count) || 0;
+                if (key === 'active') summary.active += count;
+                if (key === 'inactive') summary.inactive += count;
+            });
+
+            summary.total = summary.active + summary.inactive;
+            return summary;
+        }
+
+        function updateStatusCounts(summary) {
+            $('#totalBlogsCount').text(summary.total);
+            $('#activeBlogsCount').text(summary.active);
+            $('#inactiveBlogsCount').text(summary.inactive);
+        }
+
+        function renderPieChart(summary) {
+            const ctx = document.getElementById('statusPieChart').getContext('2d');
+            const labels = [`Active (${summary.active})`, `Inactive (${summary.inactive})`];
+            const counts = [summary.active, summary.inactive];
+
+            new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels,
+                    datasets: [{
+                        data: counts,
+                        backgroundColor: ['#10b981', '#ef4444'],
+                        borderWidth: 1
+                    }]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        function renderBarChart(data) {
+            const ctx = document.getElementById('authorBarChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar', 
+                data: {
+                    labels: data.map(item => item.authorName),
+                    datasets: [{
+                        label: 'Blogs Count',
+                        data: data.map(item => item.blogCount),
+                        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                        borderColor: '#2563eb',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    });
+</script>
+
+</body>
+</html>

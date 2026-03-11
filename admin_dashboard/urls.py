@@ -21,7 +21,10 @@ from .views import (
     dashboard_tag_add,
     dashboard_tag_detail,
     dashboard_tags,
+    chart_view,
+    
 )
+from . import views 
 
 app_name = "admin_dashboard"
 
@@ -52,4 +55,5 @@ urlpatterns = [
     path("dashboard/tags/<int:tag_id>/edit/", dashboard_tag_edit, name="dashboard_tag_edit"),
     path("dashboard/tags/<int:tag_id>/delete/", dashboard_tag_delete, name="dashboard_tag_delete"),
     path("dashboard/tags/<int:tag_id>/", dashboard_tag_detail, name="dashboard_tag_detail"),
+    path('dashboard/charts/', chart_view, name='dashboard_charts'),
 ]

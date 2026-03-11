@@ -12,6 +12,7 @@ from graphql_auth import mutations as auth_mutations
 from graphql_jwt.exceptions import JSONWebTokenError, JSONWebTokenExpired
 from graphql_auth.schema import UserQuery, MeQuery
 from graphql_jwt.utils import jwt_decode
+from django.db.models import Count
 
 from GraphQL.models import Blog, BlogCategory, BlogImage, BlogTag
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -215,7 +216,6 @@ class BlogImageType(DjangoObjectType):
         fields = "__all__"
 
     def resolve_image(self, info):
-        # Do not expose image URLs in list APIs to keep payload minimal.
         if _root_query_field_name(info) in {"admin_blogs", "blogs"}:
             return None
         if not self.image:
@@ -238,7 +238,6 @@ class BlogType(DjangoObjectType):
         fields = "__all__"
 
     def resolve_featured_image(self, info):
-        # Do not expose image URLs in list APIs to keep payload minimal.
         if _root_query_field_name(info) in {"admin_blogs", "blogs"}:
             return None
         if not self.featured_image:
@@ -259,6 +258,21 @@ class DashboardStatsType(graphene.ObjectType):
     total_tags = graphene.Int()
     active_tags = graphene.Int()
     inactive_tags = graphene.Int()
+
+
+class PieChartType(graphene.ObjectType):
+    status = graphene.String()
+    count = graphene.Int()
+
+
+class BarChartType(graphene.ObjectType):
+    author_name = graphene.String()
+    blog_count = graphene.Int()
+
+
+class DashboardChartDataType(graphene.ObjectType):
+    blog_status_stats = graphene.List(PieChartType)
+    author_blog_stats = graphene.List(BarChartType)
 
 
 class RegisterUser(graphene.Mutation):
@@ -784,6 +798,7 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
     user = graphene.Field(UserType, username=graphene.String())
 
     admin_dashboard_stats = graphene.Field(DashboardStatsType)
+    get_dashboard_charts = graphene.Field(DashboardChartDataType)
     admin_categories = graphene.List(
         BlogCategoryType,
         is_active=graphene.Boolean(required=False),
@@ -840,6 +855,39 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
             active_tags=BlogTag.objects.filter(is_active=True).count(),
             inactive_tags=BlogTag.objects.filter(is_active=False).count(),
         )
+
+    def resolve_get_dashboard_charts(self, info):
+        current_user = _get_authenticated_user(info)
+        _ensure_superuser(current_user, "access chart data")
+
+        status_qs = (
+            Blog.objects.filter(is_deleted=False)
+            .values("is_active")
+            .annotate(count=Count("id"))
+        )
+        pie_data = [
+            PieChartType(
+                status="Active" if item["is_active"] else "Inactive",
+                count=item["count"],
+            )
+            for item in status_qs
+        ]
+
+        author_qs = (
+            Blog.objects.filter(is_deleted=False)
+            .values("author__username")
+            .annotate(blog_count=Count("id"))
+            .order_by("-blog_count")
+        )
+        bar_data = [
+            BarChartType(
+                author_name=item["author__username"] or "Unknown",
+                blog_count=item["blog_count"],
+            )
+            for item in author_qs
+        ]
+
+        return DashboardChartDataType(blog_status_stats=pie_data, author_blog_stats=bar_data)
 
     def resolve_admin_categories(self, info, is_active=None, search=None):
         current_user = _get_authenticated_user(info)
@@ -945,8 +993,8 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
                 "slug",
                 "short_description",
                 "view_count",
-                # "created_at",
-                # "updated_at",
+                 "created_at",
+                 "updated_at",
                 "author__id",
                 "author__username",
                 "author__first_name",
@@ -982,7 +1030,7 @@ class Query(UserQuery, MeQuery, graphene.ObjectType):
                 raise GraphQLError("Blog not found")
             return blog
         return None
-
+    
 
 class Mutation(AuthMutation, BlogMutation, graphene.ObjectType):
     pass
